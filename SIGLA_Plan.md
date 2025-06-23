@@ -138,7 +138,7 @@ main
 - `sigla/scripts.py` can summarize retrieved capsules via the `compress` command.
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
 - `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
-- `sigla/scripts.py` can append capsules via the `update` command; the server
+ - `sigla version` (или `sigla --version`) выводит версию пакета.
   exposes `/update` for the same purpose.
 - Ingestion and reindexing support custom FAISS index factories via `--factory`.
 - `inject` and `shell` commands, as well as the `/ask` endpoint, accept a

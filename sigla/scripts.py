@@ -470,8 +470,6 @@ xvy4pj-codex/разработать-sigla-для-моделирования-мы
             args.index_path,
             args.query,
             args.top_k,
-            args.depth,
-            args.limit,
             tags,
             args.algo,
             args.restart,
@@ -531,3 +529,12 @@ def embed_text(
 
     embed_p.add_argument("--index", help="load model settings from an existing index")
         embed_text(args.text, args.model, args.index)
+from . import __version__
+
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"sigla {__version__}",
+        help="show package version and exit",
+    )

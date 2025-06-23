@@ -7,6 +7,7 @@ etrieves relevant capsules and injects them into the 1Q model.
 
 ## Installation
 
+python -m sigla --version  # то же самое через глобальный флаг
 Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` to install optional dependencies.
 
 ## Usage
