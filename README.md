@@ -111,6 +111,11 @@ python -m sigla.scripts compress myindex "философия и счастье" 
 ```
 
 This attempts to summarize the retrieved capsules using a local summarization model.
+If memory usage grows, clear caches via the CLI:
+
+```bash
+python -m sigla cache myindex --embeddings --summarizer
+```
 
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
 8. Run the API server:
@@ -297,4 +302,10 @@ snippet = INJECT(MERGE(caps))
 print(snippet)
 ```
 This produces a prompt fragment ready to prepend to your 1Q model.
+
+22. Clear cached models and embeddings when memory is tight:
+
+```bash
+python -m sigla cache myindex --embeddings --summarizer
+```
 

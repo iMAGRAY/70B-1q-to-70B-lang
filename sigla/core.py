@@ -110,6 +110,10 @@ main
 
     def load(self, path: str):
         self.index = faiss.read_index(path + ".index")
+    def clear_cache(self) -> None:
+        """Clear any cached embeddings."""
+        self._cache = {}
+
         with open(path + ".json", "r", encoding="utf-8") as f:
             data = json.load(f)
             self.meta = data["meta"]

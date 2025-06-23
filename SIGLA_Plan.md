@@ -129,6 +129,7 @@ main
 - The DSL exposes `EXPAND` for link-based retrieval.
 - `sigla/log.py` enables optional JSONL query logging for both the CLI and server.
 - `sigla/scripts.py` now includes an interactive `shell` command for quick manual tests.
+- `sigla cache` clears summarizer and embedding caches to free memory when needed.
 - `sigla/scripts.py` can display a capsule by id via the `capsule` command.
 - `sigla/scripts.py` can summarize log files via the `stats` command.
 - Search, inject, walk and shell commands accept `--tags` to filter results by metadata; the server exposes a matching query parameter.

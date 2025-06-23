@@ -2,6 +2,7 @@ import argparse
 import json
 from pathlib import Path
 
+    clear_summarizer_cache,
 from .core import CapsuleStore, merge_capsules, MissingDependencyError
 from .dsl import INJECT
 from .graph import expand_with_links
@@ -513,3 +514,25 @@ main
 
 if __name__ == "__main__":
     main()
+def clear_cache_cmd(index_path: str | None, summarizer: bool, embeddings: bool) -> None:
+    """Clear cached summarizer and/or embedding vectors."""
+    if summarizer:
+        clear_summarizer_cache()
+    if embeddings and index_path:
+        try:
+            store = CapsuleStore(lazy=True)
+            store.load(index_path)
+            store.clear_cache()
+        except MissingDependencyError as e:
+            print(f"error: {e}")
+            return
+    print("cache cleared")
+
+
+    cache_p = subparsers.add_parser("cache", help="clear caches")
+    cache_p.add_argument("index_path", nargs="?")
+    cache_p.add_argument("--summarizer", action="store_true")
+    cache_p.add_argument("--embeddings", action="store_true")
+
+    elif args.cmd == "cache":
+        clear_cache_cmd(args.index_path, args.summarizer, args.embeddings)
