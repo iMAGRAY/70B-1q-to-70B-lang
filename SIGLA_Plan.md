@@ -115,6 +115,8 @@ main
 - `sigla/core.py` provides an initial FAISS-based capsule store with embedding and search.
 - `sigla/scripts.py` offers CLI commands to ingest capsules and run searches, and can append to an existing index.
 - `sigla/server.py` exposes a FastAPI service for querying and updating the capsule index.
+- Ratings can be adjusted after ingestion via the new `rate` command.
+- The API exposes a `/rate` endpoint for the same purpose.
 - `sigla/dsl.py` implements INTENT/RETRIEVE/MERGE/INJECT helpers for prompt construction.
 - Capsules now receive persistent `id`s and an optional `links` field for building a graph.
 - Graph expansion is provided via `sigla.graph.expand_with_links` and the CLI `walk` command.

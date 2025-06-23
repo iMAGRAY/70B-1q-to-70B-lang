@@ -245,3 +245,53 @@ def compress_capsules(capsules: List[Dict[str, Any]], model_name: str = "sshleif
     text = "\n".join(c["text"] for c in capsules)
     summary = summarizer(text, max_length=60, min_length=5, do_sample=False)
     return summary[0]["summary_text"].strip()
+    def update_metadata(
+        self,
+        ids: List[int],
+        rating: float | None = None,
+        add_tags: List[str] | None = None,
+        remove_tags: List[str] | None = None,
+    ) -> int:
+        """Update capsule metadata in place.
+
+        Parameters
+        ----------
+        ids:
+            Capsule IDs to modify.
+        rating:
+            New rating value to assign. ``None`` leaves it unchanged.
+        add_tags:
+            Tags to add to each capsule's ``tags`` list.
+        remove_tags:
+            Tags to remove from each capsule's ``tags`` list.
+        Returns
+        -------
+        int
+            Number of capsules modified.
+        """
+        updated = 0
+        for cid in ids:
+            if cid < 0 or cid >= len(self.meta):
+                continue
+            meta = self.meta[cid]
+            changed = False
+            if rating is not None:
+                meta["rating"] = rating
+                meta.setdefault("metadata", {})["rating"] = rating
+                changed = True
+            if add_tags:
+                current = set(meta.get("tags", []))
+                new = current.union(add_tags)
+                if new != current:
+                    meta["tags"] = sorted(new)
+                    changed = True
+            if remove_tags:
+                current = set(meta.get("tags", []))
+                new = current.difference(remove_tags)
+                if new != current:
+                    meta["tags"] = sorted(new)
+                    changed = True
+            if changed:
+                updated += 1
+        return updated
+

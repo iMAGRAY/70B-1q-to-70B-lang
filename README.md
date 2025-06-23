@@ -182,6 +182,17 @@ Rebuild embeddings through the server:
 curl -X POST "http://localhost:8000/reindex?model=sentence-transformers/all-MiniLM-L6-v2&factory=HNSW32"
 ```
 
+Update capsule ratings via the API:
+
+```bash
+curl -X POST "http://localhost:8000/rate?ids=0,1&rating=1.5"
+```
+You can also update capsules matching certain tags:
+
+```bash
+curl -X POST "http://localhost:8000/rate?tags=философия&rating=0.8"
+```
+
 =======
 main
 Both the CLI and server accept a `--log-file` option to record queries and
@@ -265,6 +276,14 @@ This removes matching capsules and rebuilds the index.
 
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
 15. Rebuild embeddings with a new model or index type:
+20. Adjust capsule ratings:
+
+```bash
+python -m sigla rate myindex --ids 0,1 --rating 1.5
+```
+
+Use `--tags` instead of `--ids` to update groups of capsules.
+
 =======
 xvy4pj-codex/разработать-sigla-для-моделирования-мышления
 =======

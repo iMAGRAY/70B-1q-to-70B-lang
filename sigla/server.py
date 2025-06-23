@@ -211,6 +211,26 @@ main
         siglog.log({"type": "reindex", "model": model or store.model_name, "factory": factory or store.index_factory})
         return {"model": store.model_name, "factory": store.index_factory}
 
+    @app.post("/rate")
+    def rate(rating: float, ids: str = "", tags: str | None = None):
+        """Update capsule rating by id or tags."""
+        if store is None:
+            raise HTTPException(status_code=500, detail="Store not loaded")
+        id_list = [int(x) for x in ids.split(",") if x] if ids else []
+        tag_list = tags.split(',') if tags else None
+        update_set = set(id_list)
+        if tag_list:
+            for i, meta in enumerate(store.meta):
+                if set(tag_list).intersection(meta.get("tags", [])):
+                    update_set.add(i)
+        if not update_set:
+            return {"updated": 0}
+        updated = store.update_metadata(sorted(update_set), rating=rating)
+        if index_path:
+            store.save(index_path)
+        siglog.log({"type": "rate", "updated": updated, "rating": rating, "ids": sorted(update_set), "tags": tag_list})
+        return {"updated": updated}
+
 =======
 main
 def cli():

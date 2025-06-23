@@ -385,6 +385,33 @@ main
 xvy4pj-codex/разработать-sigla-для-моделирования-мышления
 =======
     walk_p.add_argument("--algo", choices=["bfs", "random"], default="bfs")
+def rate_capsules(
+    index_path: str,
+    rating: float,
+    ids: list[int] | None = None,
+    tags: list[str] | None = None,
+) -> None:
+    """Update the rating of capsules by id or tags."""
+    try:
+        store = CapsuleStore(lazy=True)
+        store.load(index_path)
+    except MissingDependencyError as e:
+        print(f"error: {e}")
+        return
+    id_set: set[int] = set(ids or [])
+    if tags:
+        for i, meta in enumerate(store.meta):
+            if set(tags).intersection(meta.get("tags", [])):
+                id_set.add(i)
+    if not id_set:
+        print("no matching capsules")
+        return
+    updated = store.update_metadata(sorted(id_set), rating=rating)
+    store.save(index_path)
+    siglog.log({"type": "rate", "updated": updated, "rating": rating, "ids": sorted(id_set), "tags": tags})
+    print(f"updated {updated} capsules")
+
+
     walk_p.add_argument("--restart", type=float, default=0.5, help="restart prob for random walk")
 main
 main
@@ -507,9 +534,19 @@ main
         show_info(args.index_path)
     elif args.cmd == "stats":
         show_stats(args.log_file)
+    rate_p = subparsers.add_parser("rate", help="update capsule rating")
+    rate_p.add_argument("index_path")
+    rate_p.add_argument("--rating", type=float, required=True)
+    rate_p.add_argument("--ids")
+    rate_p.add_argument("--tags")
+
     else:
         parser.print_help()
 
 
 if __name__ == "__main__":
     main()
+    elif args.cmd == "rate":
+        rate_ids = [int(x) for x in args.ids.split(",")] if args.ids else None
+        rate_tags = args.tags.split(",") if args.tags else None
+        rate_capsules(args.index_path, args.rating, rate_ids, rate_tags)
