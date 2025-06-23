@@ -1,35 +1,34 @@
-name: Auto-merge Codex branches into main
+name: Auto-resolve PR conflicts for Codex branches
 
 on:
-  push:
-    # Срабатывает на любую ветку, в имени которой есть "codex/"
-    branches:
-      - '*codex/**'
+  pull_request:
+    types: [opened, synchronize]  # при создании PR и при пушах в неё
+    branches: [ main ]           # целевая ветка — main
 
 jobs:
-  merge:
+  resolve-conflicts:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout PR branch
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0     # чтобы была вся история
+          # снимаем всё, чтобы можно было мёржить
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
 
       - name: Configure Git
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Merge codex branch into main with “theirs”
+      - name: Merge main into PR branch (theirs)
         run: |
-          # Переходим на main и стягиваем его
-          git checkout main
-          git pull origin main
+          # Забираем свежий main
+          git fetch origin main
+          # Мёржим его в текущую ветку (Codex-ветку)
+          git merge origin/main -s recursive -X theirs --no-edit
 
-          # Мёржим ветку, которая только что запушена (их изменения)
-          git merge "${{ github.ref_name }}" \
-                    -s recursive -X theirs \
-                    --no-edit
+      - name: Push resolved branch
+        run: |
+          git push origin HEAD:${{ github.head_ref }}
 
-      - name: Push updated main
-        run: git push origin main
