@@ -127,3 +127,4 @@ assumptions.
   `temperature` parameter controlling how capsules are merged.
 - The API exposes `/info` and `/list` endpoints mirroring the CLI commands.
 - `/walk` and `/compress` endpoints support graph expansion and summarization.
+- `/prune` and `/reindex` endpoints mirror CLI commands for capsule removal and index rebuilding.

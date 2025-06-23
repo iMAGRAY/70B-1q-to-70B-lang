@@ -163,6 +163,40 @@ if app:
         )
         return {"summary": summary}
 
+    @app.post("/prune")
+    def prune(ids: str = "", tags: str | None = None):
+        """Remove capsules by id or tags and rebuild the index."""
+        if store is None:
+            raise HTTPException(status_code=500, detail="Store not loaded")
+        id_list = [int(x) for x in ids.split(",") if x] if ids else []
+        tag_list = tags.split(',') if tags else None
+        remove_set = set(id_list)
+        if tag_list:
+            for i, meta in enumerate(store.meta):
+                if set(tag_list).intersection(meta.get("tags", [])):
+                    remove_set.add(i)
+        if not remove_set:
+            return {"removed": 0}
+        removed = store.remove_capsules(sorted(remove_set))
+        if index_path:
+            store.save(index_path)
+        siglog.log({"type": "prune", "removed": removed, "ids": sorted(remove_set), "tags": tag_list})
+        return {"removed": removed}
+
+    @app.post("/reindex")
+    def reindex(model: str | None = None, factory: str | None = None):
+        """Recompute all embeddings and rebuild the index."""
+        if store is None:
+            raise HTTPException(status_code=500, detail="Store not loaded")
+        try:
+            store.rebuild_index(model, factory)
+        except MissingDependencyError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        if index_path:
+            store.save(index_path)
+        siglog.log({"type": "reindex", "model": model or store.model_name, "factory": factory or store.index_factory})
+        return {"model": store.model_name, "factory": store.index_factory}
+
 def cli():
     parser = argparse.ArgumentParser(description="Run SIGLA API server")
     parser.add_argument("index_path", help="Path prefix of the FAISS index")

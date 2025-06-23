@@ -112,6 +112,18 @@ Summarize top capsules:
 curl "http://localhost:8000/compress?query=философия&top_k=3"
 ```
 
+Remove capsules via the API:
+
+```bash
+curl -X POST "http://localhost:8000/prune?ids=0,1&tags=философия"
+```
+
+Rebuild embeddings through the server:
+
+```bash
+curl -X POST "http://localhost:8000/reindex?model=sentence-transformers/all-MiniLM-L6-v2&factory=HNSW32"
+```
+
 Both the CLI and server accept a `--log-file` option to record queries and
 updates in JSONL format. This is useful for building a memory of interactions:
 
