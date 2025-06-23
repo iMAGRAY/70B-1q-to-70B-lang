@@ -10,8 +10,12 @@ import argparse
 import os
 from . import log as siglog
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 from .core import CapsuleStore, merge_capsules, compress_capsules, MissingDependencyError
 from .graph import expand_with_links, random_walk_links
+=======
+from .core import CapsuleStore, merge_capsules
+main
 
 if FastAPI:
     app = FastAPI(title="SIGLA Server")
@@ -42,13 +46,22 @@ if app:
         return results
 
     @app.get("/ask")
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     def ask(query: str, top_k: int = 5, tags: str | None = None, temperature: float = 1.0):
+=======
+    def ask(query: str, top_k: int = 5, tags: str | None = None):
+main
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(',') if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
         merged = merge_capsules(results, temperature=temperature)
         siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "temperature": temperature, "context": merged})
+=======
+        merged = merge_capsules(results)
+        siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "context": merged})
+main
         return {"context": merged}
 
     @app.get("/capsule/{idx}")
@@ -60,15 +73,16 @@ if app:
         return store.meta[idx]
 
     @app.post("/update")
-    def update_capsules(capsules: List[dict], link_neighbors: int = 0):
+    def update_capsules(capsules: List[dict]):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-        store.add_capsules(capsules, link_neighbors=link_neighbors)
+        store.add_capsules(capsules)
         if index_path:
             store.save(index_path)
-        siglog.log({"type": "update", "added": len(capsules), "link": link_neighbors})
+        siglog.log({"type": "update", "added": len(capsules)})
         return {"added": len(capsules)}
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     @app.get("/info")
     def info():
         """Return summary information about the index."""
@@ -100,33 +114,6 @@ if app:
             if len(results) >= limit:
                 break
         return results
-
-    @app.get("/dump")
-    def dump_capsules(limit: int = 0, tags: str | None = None):
-        """Return capsules as JSON (optionally filtered and limited)."""
-        if store is None:
-            raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
-        results = []
-        for meta in store.meta:
-            if tag_list and not set(tag_list).intersection(meta.get("tags", [])):
-                continue
-            results.append(meta)
-            if limit and len(results) >= limit:
-                break
-        return results
-
-    @app.get("/graph")
-    def graph(limit: int = 0, tags: str | None = None):
-        """Return the capsule graph in Graphviz DOT format."""
-        if store is None:
-            raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
-        from .graph import to_dot
-        dot = to_dot(store, limit=limit or None, tags=tag_list)
-        return {
-            "dot": dot
-        }
 
     @app.get("/walk")
     def walk(
@@ -224,6 +211,8 @@ if app:
         siglog.log({"type": "reindex", "model": model or store.model_name, "factory": factory or store.index_factory})
         return {"model": store.model_name, "factory": store.index_factory}
 
+=======
+main
 def cli():
     parser = argparse.ArgumentParser(description="Run SIGLA API server")
     parser.add_argument("index_path", help="Path prefix of the FAISS index")
