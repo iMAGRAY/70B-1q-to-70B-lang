@@ -252,8 +252,8 @@ python -m sigla.scripts info myindex
 This lists the embedding model, dimension, capsule count and tag distribution.
 
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
-14. Prune capsules by id or tags:
-=======
+15. Summarize a log file to see how commands are used and how long they take:
+This prints a JSON object with counts and the average `duration` for each event type.
 13. Prune capsules by id or tags:
 ain
 

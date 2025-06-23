@@ -295,10 +295,19 @@ def prune_capsules(index_path: str, ids: list[int] | None = None, tags: list[str
         for i, meta in enumerate(store.meta):
             if set(tags).intersection(meta.get("tags", [])):
                 remove_set.add(i)
-    if not remove_set:
-        print("no matching capsules")
-        return
-    removed = store.remove_capsules(sorted(remove_set))
+    """Print counts and average duration per event type."""
+    stats: dict[str, dict[str, float]] = {}
+                info = stats.setdefault(etype, {"count": 0, "total": 0.0})
+                info["count"] += 1
+                info["total"] += float(event.get("duration", 0.0))
+    summary = {
+        t: {
+            "count": int(v["count"]),
+            "avg_duration": (v["total"] / v["count"]) if v["count"] else 0,
+        }
+        for t, v in stats.items()
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
     store.save(index_path)
     siglog.log({"type": "prune", "removed": removed, "ids": sorted(remove_set), "tags": tags})
     print(f"removed {removed} capsules")

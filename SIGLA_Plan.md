@@ -91,7 +91,7 @@ main
 3. **Monitoring and Fallbacks**
    - Track latency, number of retrieved capsules, and token count.
    - If retrieval confidence is low, optionally query the model directly or use
-     a simpler RAG step.
+ - `sigla/scripts.py` can summarize log files via the `stats` command, displaying counts and average durations.
 
 ## 7. Evaluation and Iteration
 1. **A/B Testing**
