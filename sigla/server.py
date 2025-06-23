@@ -8,11 +8,14 @@ except Exception:  # pragma: no cover - optional dependency
 from typing import List
 import argparse
 import os
-import time
 from . import log as siglog
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 from .core import CapsuleStore, merge_capsules, compress_capsules, MissingDependencyError
 from .graph import expand_with_links, random_walk_links
+=======
+from .core import CapsuleStore, merge_capsules
+main
 
 if FastAPI:
     app = FastAPI(title="SIGLA Server")
@@ -28,79 +31,38 @@ if app:
         global store
         if not index_path:
             raise RuntimeError("Index path not set")
-        s = CapsuleStore(lazy=True)
+        s = CapsuleStore()
         if os.path.exists(index_path + ".index"):
             s.load(index_path)
         store = s
 
     @app.get("/search")
-    def search(
-        query: str,
-        top_k: int = 5,
-        tags: str | None = None,
-        sources: str | None = None,
-        min_rating: float = 0.0,
-    ):
+    def search(query: str, top_k: int = 5, tags: str | None = None):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(',') if tags else None
-        source_list = sources.split(',') if sources else None
-        start = time.time()
-        results = store.query(
-            query, top_k=top_k, tags=tag_list, sources=source_list, min_rating=min_rating
-        )
-        siglog.record(
-            "search",
-            start,
-            query=query,
-            top_k=top_k,
-            tags=tag_list,
-            sources=source_list,
-            min_rating=min_rating,
-            results=results,
-        )
+        results = store.query(query, top_k=top_k, tags=tag_list)
+        siglog.log({"type": "search", "query": query, "top_k": top_k, "tags": tag_list, "results": results})
         return results
 
     @app.get("/ask")
-    def ask(
-        query: str,
-        top_k: int = 5,
-        tags: str | None = None,
-        sources: str | None = None,
-        temperature: float = 1.0,
-        min_rating: float = 0.0,
-    ):
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+    def ask(query: str, top_k: int = 5, tags: str | None = None, temperature: float = 1.0):
+=======
+    def ask(query: str, top_k: int = 5, tags: str | None = None):
+main
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(',') if tags else None
-        source_list = sources.split(',') if sources else None
-        start = time.time()
-        results = store.query(
-            query, top_k=top_k, tags=tag_list, sources=source_list, min_rating=min_rating
-        )
+        results = store.query(query, top_k=top_k, tags=tag_list)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
         merged = merge_capsules(results, temperature=temperature)
-        siglog.record(
-            "ask",
-            start,
-            query=query,
-            top_k=top_k,
-            tags=tag_list,
-            sources=source_list,
-            temperature=temperature,
-            min_rating=min_rating,
-            context=merged,
-        )
+        siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "temperature": temperature, "context": merged})
+=======
+        merged = merge_capsules(results)
+        siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "context": merged})
+main
         return {"context": merged}
-
-    @app.get("/embed")
-    def embed(text: str, model: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        """Return the embedding vector for text."""
-        try:
-            store_local = CapsuleStore(model_name=model)
-        except MissingDependencyError as e:
-            raise HTTPException(status_code=500, detail=str(e))
-        vector = store_local.embed_query(text)[0].tolist()
-        return {"vector": vector}
 
     @app.get("/capsule/{idx}")
     def get_capsule(idx: int):
@@ -111,21 +73,16 @@ if app:
         return store.meta[idx]
 
     @app.post("/update")
-    def update_capsules(capsules: List[dict], link_neighbors: int = 0):
+    def update_capsules(capsules: List[dict]):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-        start = time.time()
-        store.add_capsules(capsules, link_neighbors=link_neighbors)
+        store.add_capsules(capsules)
         if index_path:
             store.save(index_path)
-        siglog.record(
-            "update",
-            start,
-            added=len(capsules),
-            link=link_neighbors,
-        )
+        siglog.log({"type": "update", "added": len(capsules)})
         return {"added": len(capsules)}
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     @app.get("/info")
     def info():
         """Return summary information about the index."""
@@ -158,33 +115,6 @@ if app:
                 break
         return results
 
-    @app.get("/dump")
-    def dump_capsules(limit: int = 0, tags: str | None = None):
-        """Return capsules as JSON (optionally filtered and limited)."""
-        if store is None:
-            raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
-        results = []
-        for meta in store.meta:
-            if tag_list and not set(tag_list).intersection(meta.get("tags", [])):
-                continue
-            results.append(meta)
-            if limit and len(results) >= limit:
-                break
-        return results
-
-    @app.get("/graph")
-    def graph(limit: int = 0, tags: str | None = None):
-        """Return the capsule graph in Graphviz DOT format."""
-        if store is None:
-            raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
-        from .graph import to_dot
-        dot = to_dot(store, limit=limit or None, tags=tag_list)
-        return {
-            "dot": dot
-        }
-
     @app.get("/walk")
     def walk(
         query: str,
@@ -192,38 +122,31 @@ if app:
         depth: int = 1,
         limit: int = 10,
         tags: str | None = None,
-        sources: str | None = None,
         algo: str = "bfs",
         restart: float = 0.5,
-        min_rating: float = 0.0,
     ):
         """Expand results via capsule links."""
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(',') if tags else None
-        source_list = sources.split(',') if sources else None
-        start = time.time()
-        results = store.query(
-            query, top_k=top_k, tags=tag_list, sources=source_list, min_rating=min_rating
-        )
+        results = store.query(query, top_k=top_k, tags=tag_list)
         if algo == "random":
             expanded = random_walk_links(
                 results, store, steps=depth, restart=restart, limit=limit
             )
         else:
             expanded = expand_with_links(results, store, depth=depth, limit=limit)
-        siglog.record(
-            "walk",
-            start,
-            query=query,
-            top_k=top_k,
-            depth=depth,
-            limit=limit,
-            algo=algo,
-            restart=restart,
-            tags=tag_list,
-            sources=source_list,
-            min_rating=min_rating,
+        siglog.log(
+            {
+                "type": "walk",
+                "query": query,
+                "top_k": top_k,
+                "depth": depth,
+                "limit": limit,
+                "algo": algo,
+                "restart": restart,
+                "tags": tag_list,
+            }
         )
         return expanded
 
@@ -232,41 +155,25 @@ if app:
         query: str,
         top_k: int = 5,
         tags: str | None = None,
-        sources: str | None = None,
         model: str = "sshleifer/distilbart-cnn-12-6",
-        min_rating: float = 0.0,
-        max_length: int = 60,
-        min_length: int = 5,
     ):
         """Return a summary of retrieved capsules."""
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(',') if tags else None
-        source_list = sources.split(',') if sources else None
-        start = time.time()
-        results = store.query(
-            query, top_k=top_k, tags=tag_list, sources=source_list, min_rating=min_rating
-        )
+        results = store.query(query, top_k=top_k, tags=tag_list)
         try:
-            summary = compress_capsules(
-                results,
-                model_name=model,
-                max_length=max_length,
-                min_length=min_length,
-            )
+            summary = compress_capsules(results, model_name=model)
         except MissingDependencyError as e:
             raise HTTPException(status_code=500, detail=str(e))
-        siglog.record(
-            "compress",
-            start,
-            query=query,
-            top_k=top_k,
-            model=model,
-            tags=tag_list,
-            sources=source_list,
-            min_rating=min_rating,
-            max_length=max_length,
-            min_length=min_length,
+        siglog.log(
+            {
+                "type": "compress",
+                "query": query,
+                "top_k": top_k,
+                "model": model,
+                "tags": tag_list,
+            }
         )
         return {"summary": summary}
 
@@ -284,17 +191,10 @@ if app:
                     remove_set.add(i)
         if not remove_set:
             return {"removed": 0}
-        start = time.time()
         removed = store.remove_capsules(sorted(remove_set))
         if index_path:
             store.save(index_path)
-        siglog.record(
-            "prune",
-            start,
-            removed=removed,
-            ids=sorted(remove_set),
-            tags=tag_list,
-        )
+        siglog.log({"type": "prune", "removed": removed, "ids": sorted(remove_set), "tags": tag_list})
         return {"removed": removed}
 
     @app.post("/reindex")
@@ -302,92 +202,17 @@ if app:
         """Recompute all embeddings and rebuild the index."""
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-        start = time.time()
         try:
             store.rebuild_index(model, factory)
         except MissingDependencyError as e:
             raise HTTPException(status_code=500, detail=str(e))
         if index_path:
             store.save(index_path)
-        siglog.record(
-            "reindex",
-            start,
-            model=model or store.model_name,
-            factory=factory or store.index_factory,
-        )
+        siglog.log({"type": "reindex", "model": model or store.model_name, "factory": factory or store.index_factory})
         return {"model": store.model_name, "factory": store.index_factory}
 
-    @app.post("/rate")
-    def rate(rating: float, ids: str = "", tags: str | None = None):
-        """Update capsule rating by id or tags."""
-        if store is None:
-            raise HTTPException(status_code=500, detail="Store not loaded")
-        id_list = [int(x) for x in ids.split(",") if x] if ids else []
-        tag_list = tags.split(',') if tags else None
-        update_set = set(id_list)
-        if tag_list:
-            for i, meta in enumerate(store.meta):
-                if set(tag_list).intersection(meta.get("tags", [])):
-                    update_set.add(i)
-        if not update_set:
-            return {"updated": 0}
-        start = time.time()
-        updated = store.update_metadata(sorted(update_set), rating=rating)
-        if index_path:
-            store.save(index_path)
-        siglog.record(
-            "rate",
-            start,
-            updated=updated,
-            rating=rating,
-            ids=sorted(update_set),
-            tags=tag_list,
-        )
-        return {"updated": updated}
-
-    @app.post("/meta")
-    def meta(
-        rating: float | None = None,
-        add: str = "",
-        remove: str = "",
-        ids: str = "",
-        tags: str | None = None,
-    ):
-        """Modify capsule metadata such as rating or tags."""
-        if store is None:
-            raise HTTPException(status_code=500, detail="Store not loaded")
-        id_list = [int(x) for x in ids.split(",") if x] if ids else []
-        tag_list = tags.split(',') if tags else None
-        add_tags = [t for t in add.split(',') if t]
-        remove_tags = [t for t in remove.split(',') if t]
-        update_set = set(id_list)
-        if tag_list:
-            for i, meta in enumerate(store.meta):
-                if set(tag_list).intersection(meta.get("tags", [])):
-                    update_set.add(i)
-        if not update_set:
-            return {"updated": 0}
-        start = time.time()
-        updated = store.update_metadata(
-            sorted(update_set),
-            rating=rating,
-            add_tags=add_tags or None,
-            remove_tags=remove_tags or None,
-        )
-        if index_path:
-            store.save(index_path)
-        siglog.record(
-            "meta",
-            start,
-            updated=updated,
-            rating=rating,
-            add=add_tags,
-            remove=remove_tags,
-            ids=sorted(update_set),
-            tags=tag_list,
-        )
-        return {"updated": updated}
-
+=======
+main
 def cli():
     parser = argparse.ArgumentParser(description="Run SIGLA API server")
     parser.add_argument("index_path", help="Path prefix of the FAISS index")
