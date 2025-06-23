@@ -152,16 +152,16 @@ Check the current index summary:
 curl http://localhost:8000/info
 ```
 
-List stored capsules (limit the number and filter by tags):
+List stored capsules (limit the number and filter by tags, sources and rating):
 
 ```bash
-curl "http://localhost:8000/list?limit=5&tags=философия"
+curl "http://localhost:8000/list?limit=5&tags=философия&sources=Claude&min_rating=1.0"
 ```
 
-Walk linked capsules via the API:
+Export capsules via the API (same filters):
 
 ```bash
-curl "http://localhost:8000/walk?query=философия&depth=2&limit=8"
+curl "http://localhost:8000/dump?limit=10&tags=философия&sources=Claude&min_rating=1.0" > dump.json
 ```
 
 Summarize top capsules:
@@ -249,11 +249,11 @@ main
 python -m sigla.scripts info myindex
 ```
 
-This lists the embedding model, dimension, capsule count and tag distribution.
+12. List stored capsules (optionally filter by tags, sources or rating):
 
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-14. Prune capsules by id or tags:
-=======
+python -m sigla list myindex --limit 5 --tags философия --sources Claude --min-rating 1.0
+13. Export capsules to a JSON file (with the same filters):
+python -m sigla export myindex dump.json --tags философия --sources Claude --min-rating 1.0
 13. Prune capsules by id or tags:
 ain
 

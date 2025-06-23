@@ -137,8 +137,34 @@ main
         else:
             expanded = expand_with_links(results, store, depth=depth, limit=limit)
         siglog.log(
-            {
-                "type": "walk",
+    def list_capsules(
+        limit: int = 20,
+        tags: str | None = None,
+        sources: str | None = None,
+        min_rating: float = 0.0,
+    ):
+        source_list = sources.split(',') if sources else None
+            if source_list:
+                src = meta.get("metadata", {}).get("source")
+                if src not in source_list:
+                    continue
+            rating = meta.get("rating") or meta.get("metadata", {}).get("rating") or 1.0
+            if rating < min_rating:
+                continue
+    def dump_capsules(
+        limit: int = 0,
+        tags: str | None = None,
+        sources: str | None = None,
+        min_rating: float = 0.0,
+    ):
+        source_list = sources.split(',') if sources else None
+            if source_list:
+                src = meta.get("metadata", {}).get("source")
+                if src not in source_list:
+                    continue
+            rating = meta.get("rating") or meta.get("metadata", {}).get("rating") or 1.0
+            if rating < min_rating:
+                continue
                 "query": query,
                 "top_k": top_k,
                 "depth": depth,

@@ -268,8 +268,19 @@ def show_info(index_path: str) -> None:
     except MissingDependencyError as e:
         print(f"error: {e}")
         return
-    info = {
-        "model": store.model_name,
+    index_path: str,
+    limit: int = 20,
+    tags: list[str] | None = None,
+    sources: list[str] | None = None,
+    min_rating: float = 0.0,
+    """List capsules optionally filtered by tags, source and rating."""
+        if sources:
+            src = meta.get("metadata", {}).get("source")
+            if src not in sources:
+                continue
+        rating = meta.get("rating") or meta.get("metadata", {}).get("rating") or 1.0
+        if rating < min_rating:
+            continue
         "dimension": store.dimension,
         "capsules": len(store.meta),
     }
@@ -372,8 +383,19 @@ main
     compress_p.add_argument("--model", default="sshleifer/distilbart-cnn-12-6")
     compress_p.add_argument("--tags")
 
-    walk_p = subparsers.add_parser("walk")
-    walk_p.add_argument("index_path")
+    index_path: str,
+    output_file: str,
+    tags: list[str] | None = None,
+    sources: list[str] | None = None,
+    min_rating: float = 0.0,
+    """Export capsules to a JSON file with optional filters."""
+        if sources:
+            src = meta.get("metadata", {}).get("source")
+            if src not in sources:
+                continue
+        rating = meta.get("rating") or meta.get("metadata", {}).get("rating") or 1.0
+        if rating < min_rating:
+            continue
     walk_p.add_argument("query")
     walk_p.add_argument("--top_k", type=int, default=5)
     walk_p.add_argument("--depth", type=int, default=1)
@@ -531,3 +553,23 @@ def embed_text(
 
     embed_p.add_argument("--index", help="load model settings from an existing index")
         embed_text(args.text, args.model, args.index)
+    list_p.add_argument("--sources")
+    list_p.add_argument("--min-rating", type=float, default=0.0)
+    export_p.add_argument("--sources")
+    export_p.add_argument("--min-rating", type=float, default=0.0)
+        list_sources = args.sources.split(",") if args.sources else None
+        list_capsules(
+            args.index_path,
+            args.limit,
+            list_tags,
+            list_sources,
+            args.min_rating,
+        )
+        export_sources = args.sources.split(",") if args.sources else None
+        export_capsules(
+            args.index_path,
+            args.output_file,
+            export_tags,
+            export_sources,
+            args.min_rating,
+        )

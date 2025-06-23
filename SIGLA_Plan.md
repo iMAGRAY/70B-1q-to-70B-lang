@@ -132,6 +132,8 @@ main
 - `sigla/scripts.py` can display a capsule by id via the `capsule` command.
 - `sigla/scripts.py` can summarize log files via the `stats` command.
 - Search, inject, walk and shell commands accept `--tags` to filter results by metadata; the server exposes a matching query parameter.
+- `list` and `export` commands support filtering by source and rating; the API
+  offers the same via `/list` and `/dump` parameters.
 - `sigla/scripts.py` can show index details via the `info` command.
 - `sigla/scripts.py` can list stored capsules via the `list` command.
 - `sigla/scripts.py` can remove capsules via the `prune` command.
