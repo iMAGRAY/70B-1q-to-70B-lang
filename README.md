@@ -164,9 +164,10 @@ Walk linked capsules via the API:
 curl "http://localhost:8000/walk?query=философия&depth=2&limit=8"
 ```
 
-Summarize top capsules:
+Check the current index summary (use `/ping` to verify the server is up):
 
 ```bash
+curl http://localhost:8000/ping  # проверка
 curl "http://localhost:8000/compress?query=философия&top_k=3"
 ```
 

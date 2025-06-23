@@ -140,6 +140,7 @@ main
 - `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
 - `sigla/scripts.py` can append capsules via the `update` command; the server
   exposes `/update` for the same purpose.
+- Сервер также имеет `/ping` для проверки работоспособности.
 - Ingestion and reindexing support custom FAISS index factories via `--factory`.
 - `inject` and `shell` commands, as well as the `/ask` endpoint, accept a
   `temperature` parameter controlling how capsules are merged.

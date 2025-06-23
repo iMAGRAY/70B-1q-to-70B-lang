@@ -124,6 +124,11 @@ main
         tags: str | None = None,
         algo: str = "bfs",
         restart: float = 0.5,
+    @app.get("/ping")
+    def ping():
+        """Check server liveness."""
+        return {"status": "ok"}
+
     ):
         """Expand results via capsule links."""
         if store is None:
