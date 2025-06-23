@@ -22,7 +22,7 @@ assumptions.
 4. **Embedding and Storage**
    - Use efficient open-source embedding models (e.g., E5 or Llama2-based).
    - Verify critical capsules by comparing with 70B embeddings when possible.
-   - Store vectors and metadata (source, tags, quality rating) in a FAISS index.
+   - Store vectors and metadata (source, tags, quality rating) in a FAISS index. Use `Flat` by default but allow `HNSW` or `IVF` factories for larger datasets.
 
 ## 2. SIGLA Core
 1. **Embedding Requests**
@@ -105,9 +105,21 @@ assumptions.
 
 ### Implementation Progress
 - `sigla/core.py` provides an initial FAISS-based capsule store with embedding and search.
-<<<<<<< fivfkg-codex/разработать-sigla-для-моделирования-мышления
 - `sigla/scripts.py` offers CLI commands to ingest capsules and run searches, and can append to an existing index.
 - `sigla/server.py` exposes a FastAPI service for querying and updating the capsule index.
-=======
-- `sigla/scripts.py` offers simple CLI commands to ingest capsules and run searches.
->>>>>>> main
+- `sigla/dsl.py` implements INTENT/RETRIEVE/MERGE/INJECT helpers for prompt construction.
+- Capsules now receive persistent `id`s and an optional `links` field for building a graph.
+- Graph expansion is provided via `sigla.graph.expand_with_links` and the CLI `walk` command.
+- Random walk retrieval is implemented via `sigla.graph.random_walk_links` and selectable in the CLI `walk` command.
+- The DSL exposes `EXPAND` for link-based retrieval.
+- `sigla/log.py` enables optional JSONL query logging for both the CLI and server.
+- `sigla/scripts.py` now includes an interactive `shell` command for quick manual tests.
+- `sigla/scripts.py` can display a capsule by id via the `capsule` command.
+- `sigla/scripts.py` can summarize log files via the `stats` command.
+- Search, inject, walk and shell commands accept `--tags` to filter results by metadata; the server exposes a matching query parameter.
+- `sigla/scripts.py` can show index details via the `info` command.
+- `sigla/scripts.py` can list stored capsules via the `list` command.
+- `sigla/scripts.py` can remove capsules via the `prune` command.
+- `sigla/scripts.py` can summarize retrieved capsules via the `compress` command.
+- `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
+- Ingestion and reindexing support custom FAISS index factories via `--factory`.
