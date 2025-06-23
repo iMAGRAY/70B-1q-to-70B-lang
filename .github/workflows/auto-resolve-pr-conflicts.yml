@@ -1,21 +1,25 @@
-name: Auto-resolve PR conflicts for Codex branches
+name: Auto-resolve PR conflicts for any branch with “codex”
 
 on:
-  pull_request:
-    types: [opened, synchronize]  # при создании PR и при пушах в неё
-    branches: [ main ]            # целевая ветка — main
+  pull_request_target:           # run in the context of main
+    types: [opened, synchronize]
+    branches: [ main ]
+
+permissions:
+  contents: write                # allow pushing code
+  pull-requests: write           # allow updating the PR branch
 
 jobs:
   resolve-conflicts:
-    # запустится только если в имени head-ветки есть "codex"
-    if: contains(github.head_ref, 'codex')
+    if: contains(github.event.pull_request.head.ref, 'codex')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v3
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Configure Git
         run: |
@@ -28,4 +32,4 @@ jobs:
           git merge origin/main -s recursive -X theirs --no-edit
 
       - name: Push resolved branch
-        run: git push origin HEAD:${{ github.head_ref }}
+        run: git push origin HEAD:${{ github.event.pull_request.head.ref }}
