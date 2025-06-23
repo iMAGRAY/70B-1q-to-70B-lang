@@ -28,6 +28,30 @@ python -m sigla.scripts ingest capsules.json myindex
 python -m sigla.scripts search myindex "философия и счастье"
 ```
 
+<<<<<<< fivfkg-codex/разработать-sigla-для-моделирования-мышления
+The resulting text can be injected into your model prompt or cached at a lower level.
+
+4. Run the API server:
+
+```bash
+python -m sigla.server myindex
+```
+
+Now you can query it:
+
+```bash
+curl "http://localhost:8000/search?query=философия"
+```
+
+You can add more capsules on the fly by posting to `/update`:
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -d '[{"text": "Новая мысль"}]' \
+  http://localhost:8000/update
+```
+=======
 The resulting text can be injected into your model prompt or cached at a lower l
 evel.
+>>>>>>> main
 
