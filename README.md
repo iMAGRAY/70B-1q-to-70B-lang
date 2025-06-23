@@ -9,8 +9,11 @@ etrieves relevant capsules and injects them into the 1Q model.
 
 Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` to install optional dependencies.
 
+You can also force this lightweight mode by passing `--model hash` when
+ingesting or reindexing so no model download is required.
 ## Usage
 
+# pass --model hash if you don't have sentence-transformers installed
 1. Prepare a JSON file with capsules of the following form:
 
 ```json

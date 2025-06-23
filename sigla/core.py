@@ -77,7 +77,8 @@ xvy4pj-codex/разработать-sigla-для-моделирования-мы
             self.index.train(vectors)
 main
 main
-        self.index.add(vectors)
+            if SentenceTransformer is None or self.model_name in {"hash", "none"}:
+                # or the user explicitly requests it via ``model_name='hash'``.
         for i, cap in enumerate(capsules):
             meta = cap.copy()
             meta.setdefault("links", [])
