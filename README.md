@@ -107,6 +107,8 @@ This prints the `[Контекст]` block ready to prepend to 1Q.
 main
 
 ```bash
+The summarizer is cached after the first use so subsequent calls avoid reloading
+the transformers pipeline.
 python -m sigla.scripts compress myindex "философия и счастье" --top_k 3 --tags философия
 ```
 

@@ -17,7 +17,12 @@ except Exception:  # pragma: no cover - optional dependency
     pipeline = None
 
 
-class MissingDependencyError(RuntimeError):
+    """Return a transformers summarization pipeline, caching by model.
+
+    Creating a summarizer can be expensive, so the pipeline instance is cached
+    the first time it is loaded. Subsequent calls with the same model name reuse
+    this object.
+    """
     """Raised when optional dependencies are not available."""
     pass
 
