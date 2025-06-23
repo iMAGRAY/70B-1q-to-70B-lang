@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+from typing import List, Dict
+import random
+
+from .core import CapsuleStore
+
+
+def expand_with_links(capsules: List[dict], store: CapsuleStore, depth: int = 1, limit: int = 10) -> List[dict]:
+    """Expand capsules by following their 'links' metadata."""
+    visited = {c["id"] for c in capsules}
+    queue = list(visited)
+    results = list(capsules)
+    for _ in range(depth):
+        new_queue = []
+        for cid in queue:
+            meta = store.meta[cid]
+            for link in meta.get("links", []):
+                if link in visited or link < 0 or link >= len(store.meta):
+                    continue
+                visited.add(link)
+                linked = store.meta[link].copy()
+                linked["score"] = 0.0
+                linked["id"] = link
+                results.append(linked)
+                new_queue.append(link)
+                if len(results) >= limit:
+                    return results
+        queue = new_queue
+    return results
+
+
+def random_walk_links(
+    capsules: List[dict],
+    store: CapsuleStore,
+    steps: int = 3,
+    restart: float = 0.5,
+    limit: int = 10,
+) -> List[dict]:
+    """Expand capsules via random walk with restart."""
+    if not capsules:
+        return []
+
+    start = [c["id"] for c in capsules]
+    visited: Dict[int, int] = {cid: 1 for cid in start}
+    current = list(start)
+
+    for _ in range(steps):
+        next_nodes = []
+        for cid in current:
+            links = store.meta[cid].get("links", [])
+            if links and random.random() > restart:
+                next_nodes.append(random.choice(links))
+            else:
+                next_nodes.append(random.choice(start))
+        current = next_nodes
+        for cid in current:
+            visited[cid] = visited.get(cid, 0) + 1
+
+    results = []
+    for cid, count in sorted(visited.items(), key=lambda x: -x[1])[:limit]:
+        meta = store.meta[cid].copy()
+        meta["score"] = float(count)
+        meta["id"] = cid
+        results.append(meta)
+    return results
+
+
+def to_dot(store: CapsuleStore, limit: int | None = None, tags: List[str] | None = None) -> str:
+    """Return the capsule graph in Graphviz DOT format."""
+
+    def label(text: str) -> str:
+        text = text.replace("\n", " ").replace("\"", "\\\"")
+        return text[:40]
+
+    lines = ["digraph Capsules {"]
+    count = 0
+    for meta in store.meta:
+        if tags and not set(tags).intersection(meta.get("tags", [])):
+            continue
+        if limit and count >= limit:
+            break
+        cid = meta["id"]
+        lines.append(f"  {cid} [label=\"{label(meta['text'])}\"];")
+        for link in meta.get("links", []):
+            if link < 0 or link >= len(store.meta):
+                continue
+            lines.append(f"  {cid} -> {link};")
+        count += 1
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def export_dot(
+    store: CapsuleStore,
+    path: str,
+    limit: int | None = None,
+    tags: List[str] | None = None,
+) -> None:
+    """Export the capsule graph to a Graphviz DOT file."""
+
+    dot = to_dot(store, limit=limit, tags=tags)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(dot)
