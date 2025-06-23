@@ -20,10 +20,17 @@ Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` t
 ]
 ```
 
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+2. Build an index:
+
+```bash
+python -m sigla.scripts ingest capsules.json myindex
+=======
 2. Build an index (you can choose a FAISS index type with `--factory`):
 
 ```bash
 python -m sigla.scripts ingest capsules.json myindex --factory HNSW32  # default is Flat
+main
 ```
 
 Each capsule is assigned a numeric `id` so you can retrieve it later via the API.
@@ -41,10 +48,17 @@ The resulting text can be injected into your model prompt or cached at a lower l
 4. Perform graph-based retrieval (if capsules include `links`):
 
 ```bash
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+python -m sigla.scripts walk myindex "философия" --depth 2 --limit 8 --tags философия
+```
+
+This expands results by following capsule links.
+=======
 python -m sigla.scripts walk myindex "философия" --depth 2 --limit 8 --algo random --tags философия
 ```
 
 Use `--algo bfs` (default) to simply follow links breadth-first or `--algo random` with `--restart` to explore the graph via a random walk.
+main
 5. Generate a prompt snippet directly:
 
 ```bash
@@ -133,6 +147,8 @@ python -m sigla.scripts prune myindex --ids 0,1 --tags philosophy
 
 This removes matching capsules and rebuilds the index.
 
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
 14. Rebuild embeddings with a new model or index type:
 
 ```bash
@@ -141,6 +157,7 @@ python -m sigla.scripts reindex myindex --model sentence-transformers/all-MiniLM
 
 This recomputes all capsule vectors and updates the FAISS index.
 
+main
 ### Using the SIGLA mini-language
 
 `sigla.dsl` exposes helpers following the plan's INTENT → RETRIEVE → MERGE → INJECT pipeline. When capsules contain links, you can also `EXPAND` them. Example:
