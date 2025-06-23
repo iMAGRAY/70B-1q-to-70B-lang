@@ -298,3 +298,5 @@ print(snippet)
 ```
 This produces a prompt fragment ready to prepend to your 1Q model.
 
+# or use an existing index to reuse its embedding model
+python -m sigla embed "другой текст" --index myindex

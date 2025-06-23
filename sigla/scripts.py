@@ -513,3 +513,21 @@ main
 
 if __name__ == "__main__":
     main()
+def embed_text(
+    text: str,
+    model: str | None = None,
+    index_path: str | None = None,
+) -> None:
+    """Print the embedding vector for a text.
+
+    If ``index_path`` is provided, the store's model and dimension are used.
+    Otherwise ``model`` specifies the sentence-transformer (or ``hash``).
+    """
+        if index_path:
+            store = CapsuleStore(lazy=True)
+            store.load(index_path)
+        else:
+            store = CapsuleStore(model_name=model or "sentence-transformers/all-MiniLM-L6-v2")
+
+    embed_p.add_argument("--index", help="load model settings from an existing index")
+        embed_text(args.text, args.model, args.index)
