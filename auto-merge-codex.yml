@@ -1,0 +1,35 @@
+name: Auto-merge Codex branches into main
+
+on:
+  push:
+    # Срабатывает на любую ветку, в имени которой есть "codex/"
+    branches:
+      - '*codex/**'
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0     # чтобы была вся история
+
+      - name: Configure Git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge codex branch into main with “theirs”
+        run: |
+          # Переходим на main и стягиваем его
+          git checkout main
+          git pull origin main
+
+          # Мёржим ветку, которая только что запушена (их изменения)
+          git merge "${{ github.ref_name }}" \
+                    -s recursive -X theirs \
+                    --no-edit
+
+      - name: Push updated main
+        run: git push origin main
