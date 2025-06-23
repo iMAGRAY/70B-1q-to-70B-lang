@@ -1,21 +1,18 @@
 try:
     from fastapi import FastAPI, HTTPException
+    FASTAPI_AVAILABLE = True
 except Exception:  # pragma: no cover - optional dependency
     FastAPI = None
-    class HTTPException(Exception):
-        pass
+    HTTPException = None
+    FASTAPI_AVAILABLE = False
 
 from typing import List
 import argparse
 import os
 from . import log as siglog
 
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
 from .core import CapsuleStore, merge_capsules, compress_capsules, MissingDependencyError
 from .graph import expand_with_links, random_walk_links
-=======
-from .core import CapsuleStore, merge_capsules
-main
 
 if FastAPI:
     app = FastAPI(title="SIGLA Server")
@@ -46,22 +43,13 @@ if app:
         return results
 
     @app.get("/ask")
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
     def ask(query: str, top_k: int = 5, tags: str | None = None, temperature: float = 1.0):
-=======
-    def ask(query: str, top_k: int = 5, tags: str | None = None):
-main
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(',') if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
         merged = merge_capsules(results, temperature=temperature)
         siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "temperature": temperature, "context": merged})
-=======
-        merged = merge_capsules(results)
-        siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "context": merged})
-main
         return {"context": merged}
 
     @app.get("/capsule/{idx}")
@@ -82,7 +70,6 @@ main
         siglog.log({"type": "update", "added": len(capsules)})
         return {"added": len(capsules)}
 
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
     @app.get("/info")
     def info():
         """Return summary information about the index."""
@@ -211,8 +198,7 @@ main
         siglog.log({"type": "reindex", "model": model or store.model_name, "factory": factory or store.index_factory})
         return {"model": store.model_name, "factory": store.index_factory}
 
-=======
-main
+
 def cli():
     parser = argparse.ArgumentParser(description="Run SIGLA API server")
     parser.add_argument("index_path", help="Path prefix of the FAISS index")
