@@ -15,16 +15,12 @@ def INTENT(store: CapsuleStore, text: str):
     """Embed a query into a vector."""
     if faiss is None:
         raise MissingDependencyError("faiss package is required for INTENT")
-    return store.embed_query(text)
+    vector = store.model.encode([text], convert_to_numpy=True)
+    faiss.normalize_L2(vector)
+    return vector
 
 
-def RETRIEVE(
-    store: CapsuleStore,
-    vector,
-    top_k: int = 5,
-    tags: List[str] | None = None,
-    sources: List[str] | None = None,
-):
+def RETRIEVE(store: CapsuleStore, vector, top_k: int = 5, tags: List[str] | None = None):
     """Retrieve top capsules given an embedded query."""
     if faiss is None:
         raise MissingDependencyError("faiss package is required for RETRIEVE")
@@ -36,10 +32,6 @@ def RETRIEVE(
         meta = store.meta[idx]
         if tags and not set(tags).intersection(meta.get("tags", [])):
             continue
-        if sources:
-            src = meta.get("metadata", {}).get("source")
-            if src not in sources:
-                continue
         cap = meta.copy()
         cap["score"] = float(score)
         results.append(cap)
