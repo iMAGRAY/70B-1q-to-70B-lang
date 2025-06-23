@@ -68,6 +68,7 @@ The resulting text can be injected into your model prompt or cached at a lower l
 
 ```bash
 =======
+export SIGLA_MODEL=sentence-transformers/all-MiniLM-L6-v2  # модель по умолчанию
 4. Perform graph-based retrieval (if capsules include `links`):
 
 ```bash

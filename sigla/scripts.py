@@ -11,7 +11,18 @@ from . import log as siglog
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
 def ingest(json_file: str, index_path: str, model: str, factory: str):
 =======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+def _default_model(name: str | None) -> str:
+    """Return the provided model or fall back to $SIGLA_MODEL."""
+    if name:
+        return name
+    env = os.environ.get("SIGLA_MODEL")
+    if env:
+        return env
+    return "sentence-transformers/all-MiniLM-L6-v2"
+
+
+    model: str | None,
+    model = _default_model(model)
 def ingest(json_file: str, index_path: str, model: str):
 =======
 def ingest(json_file: str, index_path: str, model: str, factory: str):
@@ -531,3 +542,9 @@ def embed_text(
 
     embed_p.add_argument("--index", help="load model settings from an existing index")
         embed_text(args.text, args.model, args.index)
+    model = _default_model(model)
+            store = CapsuleStore(model_name=_default_model(model))
+    model = _default_model(model)
+    ingest_p.add_argument("--model")
+    embed_p.add_argument("--model")
+    sim_p.add_argument("--model")

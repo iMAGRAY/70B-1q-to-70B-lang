@@ -136,6 +136,8 @@ main
 - `sigla/scripts.py` can list stored capsules via the `list` command.
 - `sigla/scripts.py` can remove capsules via the `prune` command.
 - `sigla/scripts.py` can summarize retrieved capsules via the `compress` command.
+- `ingest`, `reindex`, `embed` и `similarity` читают модель по умолчанию из
+  переменной `$SIGLA_MODEL`, если параметр `--model` не указан.
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
 - `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
 - `sigla/scripts.py` can append capsules via the `update` command; the server
