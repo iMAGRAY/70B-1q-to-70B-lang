@@ -1,6 +1,5 @@
 import json
 from typing import List, Dict, Any
-import re
 
 try:
     import faiss  # type: ignore
@@ -23,125 +22,77 @@ class MissingDependencyError(RuntimeError):
     pass
 
 
-# Basic regex to redact obvious personal data such as emails or long digit
-# sequences (phone numbers, IDs). This is a minimal security safeguard to avoid
-# storing sensitive information.
-_PERSONAL_RE = re.compile(r"([\w.+-]+@[\w-]+\.[\w.-]+)|([0-9]{4,})")
-
-
-def sanitize_text(text: str) -> str:
-    """Remove simple personal identifiers from text."""
-    return _PERSONAL_RE.sub("[REDACTED]", text)
-
-
 class CapsuleStore:
     """A lightweight FAISS-backed capsule database."""
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+=======
+main
     def __init__(
         self,
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         index_factory: str = "Flat",
-        lazy: bool = False,
     ):
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
+        if SentenceTransformer is None:
+            raise MissingDependencyError("sentence-transformers package is required")
         if faiss is None:
             raise MissingDependencyError("faiss package is required")
 
         self.model_name = model_name
+        self.model = SentenceTransformer(model_name)
+        self.dimension = self.model.get_sentence_embedding_dimension()
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
         self.index_factory = index_factory
-        self.model = None
-        self.dimension = 0
-        self.index = None
+        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+        self.index = faiss.IndexFlatIP(self.dimension)
+=======
+        self.index_factory = index_factory
+        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+main
+main
         self.meta: List[Dict[str, Any]] = []
 
-        if not lazy:
-            self._ensure_model()
-            self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
-
-    def _ensure_model(self) -> None:
-        """Load the embedding model if it hasn't been loaded yet."""
-        if self.model is None:
-            if SentenceTransformer is None:
-                raise MissingDependencyError("sentence-transformers package is required")
-            self.model = SentenceTransformer(self.model_name)
-            self.dimension = self.model.get_sentence_embedding_dimension()
-            if self.index is None:
-                self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
-            elif self.index.d != self.dimension:
-                raise RuntimeError("Index dimension does not match embedding model")
-
-    def embed_texts(self, texts: List[str]):
-        """Return normalized embeddings for a list of texts."""
-        self._ensure_model()
+    def add_capsules(self, capsules: List[Dict[str, Any]]):
+        """Embed and add capsules to the index, assigning IDs."""
+        start = len(self.meta)
+        texts = [c["text"] for c in capsules]
         vectors = self.model.encode(texts, convert_to_numpy=True)
         faiss.normalize_L2(vectors)
-        return vectors
-
-    def embed_query(self, text: str):
-        """Return a single normalized embedding vector."""
-        return self.embed_texts([text])
-
-    def add_capsules(self, capsules: List[Dict[str, Any]], link_neighbors: int = 0):
-        """Embed and add capsules to the index, assigning IDs.
-
-        Parameters
-        ----------
-        capsules:
-            A list of capsule dictionaries with at least a ``text`` field.
-        link_neighbors:
-            If greater than zero, automatically link each new capsule to the
-            nearest existing capsules in the index.
-        """
-        self._ensure_model()
-        start = len(self.meta)
-        cleaned_caps = []
-        texts = []
-        for c in capsules:
-            clean_text = sanitize_text(c["text"])
-            cleaned = c.copy()
-            cleaned["text"] = clean_text
-            cleaned_caps.append(cleaned)
-            texts.append(clean_text)
-        vectors = self.embed_texts(texts)
-
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
         if not self.index.is_trained:
             self.index.train(vectors)
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+        if not self.index.is_trained:
+            self.index.train(vectors)
+main
+main
         self.index.add(vectors)
-
-        for i, cap in enumerate(cleaned_caps):
+        for i, cap in enumerate(capsules):
             meta = cap.copy()
             meta.setdefault("links", [])
             meta["id"] = start + i
             self.meta.append(meta)
 
-        if link_neighbors > 0 and self.index.ntotal > 0:
-            # Search for neighbors including the newly added vectors.
-            _, idxs = self.index.search(vectors, link_neighbors + 1)
-            new_links: Dict[int, List[int]] = {}
-            for i, neighbors in enumerate(idxs):
-                links = []
-                for n in neighbors:
-                    if n == -1 or n == start + i:
-                        continue
-                    links.append(int(n))
-                if links:
-                    meta_links = self.meta[start + i].setdefault("links", [])
-                    for n in links:
-                        if n not in meta_links:
-                            meta_links.append(n)
-                new_links[start + i] = links
-
-            # Symmetrically link neighbors back to the new capsules
-            for new_id, links in new_links.items():
-                for n in links:
-                    if n < 0 or n >= len(self.meta):
-                        continue
-                    rev = self.meta[n].setdefault("links", [])
-                    if new_id not in rev:
-                        rev.append(new_id)
-
     def save(self, path: str):
         faiss.write_index(self.index, path + ".index")
         with open(path + ".json", "w", encoding="utf-8") as f:
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+            json.dump({"model": self.model_name, "meta": self.meta}, f, ensure_ascii=False, indent=2)
+=======
+main
             json.dump(
                 {
                     "model": self.model_name,
@@ -152,6 +103,10 @@ class CapsuleStore:
                 ensure_ascii=False,
                 indent=2,
             )
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
 
     def load(self, path: str):
         self.index = faiss.read_index(path + ".index")
@@ -159,14 +114,20 @@ class CapsuleStore:
             data = json.load(f)
             self.meta = data["meta"]
             self.model_name = data.get("model", self.model_name)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
             self.index_factory = data.get("factory", "Flat")
-        self.dimension = self.index.d
-        self.model = None
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+            self.index_factory = data.get("factory", "Flat")
+main
+main
+        self.model = SentenceTransformer(self.model_name)
 
     def query(self, text: str, top_k: int = 5, tags: List[str] | None = None) -> List[Dict[str, Any]]:
         """Return top matching capsules, optionally filtering by tags."""
-        self._ensure_model()
-        vector = self.embed_query(text)
+        vector = self.model.encode([text], convert_to_numpy=True)
+        faiss.normalize_L2(vector)
         # oversample to account for tag filtering
         scores, indices = self.index.search(vector, top_k * 5)
         results = []
@@ -188,7 +149,6 @@ class CapsuleStore:
         """Remove capsules by id, rebuilding the index."""
         if not ids:
             return 0
-        self._ensure_model()
         to_remove = set(ids)
         mapping: Dict[int, int] = {}
         new_meta: List[Dict[str, Any]] = []
@@ -202,9 +162,10 @@ class CapsuleStore:
             texts.append(copy["text"])
         for meta in new_meta:
             meta["links"] = [mapping[l] for l in meta.get("links", []) if l in mapping]
-        vectors = self.embed_texts(texts) if texts else None
+        vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
         self.index = faiss.IndexFlatIP(self.dimension)
         if vectors is not None and len(texts) > 0:
+            faiss.normalize_L2(vectors)
             self.index.add(vectors)
         for new_id, meta in enumerate(new_meta):
             meta["id"] = new_id
@@ -212,6 +173,11 @@ class CapsuleStore:
         self.meta = new_meta
         return removed
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
     def rebuild_index(self, model_name: str | None = None, index_factory: str | None = None) -> None:
         """Recompute all embeddings and rebuild the FAISS index."""
         if model_name:
@@ -222,15 +188,19 @@ class CapsuleStore:
             self.dimension = self.model.get_sentence_embedding_dimension()
         if index_factory:
             self.index_factory = index_factory
-        self._ensure_model()
         texts = [m["text"] for m in self.meta]
-        vectors = self.embed_texts(texts) if texts else None
+        vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
         self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
         if vectors is not None and len(texts) > 0:
+            faiss.normalize_L2(vectors)
             self.index.add(vectors)
         for idx, meta in enumerate(self.meta):
             meta["id"] = idx
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 
+=======
+main
+main
 
 def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> str:
     """Merge capsules using a softmax-weighted combination."""
