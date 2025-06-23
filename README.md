@@ -5,6 +5,9 @@ lightweight model (**1Q**) and a larger language model (**70B**). 70B answers ar
 e distilled into compact *capsules* and indexed using FAISS. At runtime, SIGLA r
 etrieves relevant capsules and injects them into the 1Q model.
 
+
+Current version: 0.1.2. Основной функционал завершён; дальнейшая работа будет сосредоточена на интеграции с ИИ-моделями.
+
 ## Installation
 
 Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` to install optional dependencies.
