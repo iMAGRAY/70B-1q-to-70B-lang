@@ -134,6 +134,8 @@ main
 - Search, inject, walk and shell commands accept `--tags` to filter results by metadata; the server exposes a matching query parameter.
 - `sigla/scripts.py` can show index details via the `info` command.
 - `sigla/scripts.py` can list stored capsules via the `list` command.
+- Most commands use `$SIGLA_INDEX` as the default index path if no argument is
+  given.
 - `sigla/scripts.py` can remove capsules via the `prune` command.
 - `sigla/scripts.py` can summarize retrieved capsules via the `compress` command.
 3szrfh-codex/разработать-sigla-для-моделирования-мышления

@@ -56,6 +56,11 @@ Use this to grow the knowledge base without rebuilding the index.
 main
 
 ```bash
+To avoid repeating the index path for later commands, set an environment variable:
+
+```bash
+export SIGLA_INDEX=myindex
+```
 python -m sigla.scripts search myindex "философия и счастье" --tags философия
 ```
 

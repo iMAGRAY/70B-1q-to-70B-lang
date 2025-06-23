@@ -1,7 +1,20 @@
 import argparse
 import json
+import os
 from pathlib import Path
 
+def _default_index(path: str | None) -> str:
+    """Return the provided index path or fall back to $SIGLA_INDEX."""
+    if path:
+        return path
+    env = os.environ.get("SIGLA_INDEX")
+    if env:
+        return env
+    raise SystemExit("error: index path required or set SIGLA_INDEX")
+
+
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
 from .core import CapsuleStore, merge_capsules, MissingDependencyError
 from .dsl import INJECT
 from .graph import expand_with_links
@@ -116,7 +129,14 @@ def compress_snippet(index_path: str, query: str, top_k: int, tags: list[str] | 
         return
     results = store.query(query, top_k=top_k, tags=tags)
     try:
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
         from .core import compress_capsules
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
         summary = compress_capsules(results, model_name=model)
         print(summary)
     except MissingDependencyError as e:
@@ -377,6 +397,13 @@ main
     walk_p.add_argument("query")
     walk_p.add_argument("--top_k", type=int, default=5)
     walk_p.add_argument("--depth", type=int, default=1)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
+    index_path = _default_index(index_path)
     walk_p.add_argument("--limit", type=int, default=10)
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
     walk_p.add_argument("--algo", choices=["bfs", "random"], default="bfs")
@@ -531,3 +558,4 @@ def embed_text(
 
     embed_p.add_argument("--index", help="load model settings from an existing index")
         embed_text(args.text, args.model, args.index)
+        index_path = _default_index(index_path)
