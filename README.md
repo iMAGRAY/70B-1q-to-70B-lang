@@ -20,10 +20,10 @@ Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` t
 ]
 ```
 
-2. Build an index:
+2. Build an index (you can choose a FAISS index type with `--factory`):
 
 ```bash
-python -m sigla.scripts ingest capsules.json myindex
+python -m sigla.scripts ingest capsules.json myindex --factory HNSW32  # default is Flat
 ```
 
 Each capsule is assigned a numeric `id` so you can retrieve it later via the API.
@@ -133,10 +133,10 @@ python -m sigla.scripts prune myindex --ids 0,1 --tags philosophy
 
 This removes matching capsules and rebuilds the index.
 
-14. Rebuild embeddings with a new model:
+14. Rebuild embeddings with a new model or index type:
 
 ```bash
-python -m sigla.scripts reindex myindex --model sentence-transformers/all-MiniLM-L6-v2
+python -m sigla.scripts reindex myindex --model sentence-transformers/all-MiniLM-L6-v2 --factory HNSW32  # optional
 ```
 
 This recomputes all capsule vectors and updates the FAISS index.

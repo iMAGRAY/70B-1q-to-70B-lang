@@ -8,13 +8,13 @@ from .graph import expand_with_links
 from . import log as siglog
 
 
-def ingest(json_file: str, index_path: str, model: str):
+def ingest(json_file: str, index_path: str, model: str, factory: str):
     try:
         if Path(index_path + ".index").exists():
             store = CapsuleStore()
             store.load(index_path)
         else:
-            store = CapsuleStore(model_name=model)
+            store = CapsuleStore(model_name=model, index_factory=factory)
     except MissingDependencyError as e:
         print(f"error: {e}")
         return
@@ -207,15 +207,15 @@ def prune_capsules(index_path: str, ids: list[int] | None = None, tags: list[str
     print(f"removed {removed} capsules")
 
 
-def reindex_store(index_path: str, model: str | None = None) -> None:
-    """Rebuild embeddings for all capsules, optionally with a new model."""
+def reindex_store(index_path: str, model: str | None = None, factory: str | None = None) -> None:
+    """Rebuild embeddings for all capsules, optionally with a new model or index type."""
     try:
         store = CapsuleStore()
         store.load(index_path)
     except MissingDependencyError as e:
         print(f"error: {e}")
         return
-    store.rebuild_index(model)
+    store.rebuild_index(model, factory)
     store.save(index_path)
     siglog.log({"type": "reindex", "model": model or store.model_name})
     print("index rebuilt")
@@ -230,6 +230,7 @@ def main():
     ingest_p.add_argument("json_file")
     ingest_p.add_argument("index_path")
     ingest_p.add_argument("--model", default="sentence-transformers/all-MiniLM-L6-v2")
+    ingest_p.add_argument("--factory", default="Flat", help="FAISS index factory")
 
     search_p = subparsers.add_parser("search")
     search_p.add_argument("index_path")
@@ -277,6 +278,7 @@ def main():
     reindex_p = subparsers.add_parser("reindex", help="rebuild embeddings")
     reindex_p.add_argument("index_path")
     reindex_p.add_argument("--model")
+    reindex_p.add_argument("--factory")
 
     info_p = subparsers.add_parser("info", help="show index summary")
     info_p.add_argument("index_path")
@@ -294,7 +296,7 @@ def main():
         siglog.start(args.log_file)
     tags = args.tags.split(',') if hasattr(args, 'tags') and args.tags else None
     if args.cmd == "ingest":
-        ingest(args.json_file, args.index_path, args.model)
+        ingest(args.json_file, args.index_path, args.model, args.factory)
     elif args.cmd == "search":
         search(args.index_path, args.query, args.top_k, tags)
     elif args.cmd == "inject":
@@ -324,7 +326,7 @@ def main():
         prune_tags = args.tags.split(',') if args.tags else None
         prune_capsules(args.index_path, id_list, prune_tags)
     elif args.cmd == "reindex":
-        reindex_store(args.index_path, args.model)
+        reindex_store(args.index_path, args.model, args.factory)
     elif args.cmd == "info":
         show_info(args.index_path)
     elif args.cmd == "stats":

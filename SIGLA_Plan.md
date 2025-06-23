@@ -22,7 +22,7 @@ assumptions.
 4. **Embedding and Storage**
    - Use efficient open-source embedding models (e.g., E5 or Llama2-based).
    - Verify critical capsules by comparing with 70B embeddings when possible.
-   - Store vectors and metadata (source, tags, quality rating) in a FAISS index.
+   - Store vectors and metadata (source, tags, quality rating) in a FAISS index. Use `Flat` by default but allow `HNSW` or `IVF` factories for larger datasets.
 
 ## 2. SIGLA Core
 1. **Embedding Requests**
@@ -122,3 +122,4 @@ assumptions.
 - `sigla/scripts.py` can remove capsules via the `prune` command.
 - `sigla/scripts.py` can summarize retrieved capsules via the `compress` command.
 - `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
+- Ingestion and reindexing support custom FAISS index factories via `--factory`.
