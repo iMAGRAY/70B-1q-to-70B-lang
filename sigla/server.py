@@ -211,7 +211,16 @@ main
         siglog.log({"type": "reindex", "model": model or store.model_name, "factory": factory or store.index_factory})
         return {"model": store.model_name, "factory": store.index_factory}
 
-=======
+        max_length: int = 60,
+        min_length: int = 5,
+            summary = compress_capsules(
+                results,
+                model_name=model,
+                max_length=max_length,
+                min_length=min_length,
+            )
+            max_length=max_length,
+            min_length=min_length,
 main
 def cli():
     parser = argparse.ArgumentParser(description="Run SIGLA API server")

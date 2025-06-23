@@ -101,8 +101,11 @@ main
 python -m sigla.scripts inject myindex "философия и счастье" --top_k 3 --tags философия
 ```
 
-This prints the `[Контекст]` block ready to prepend to 1Q.
-
+python -m sigla compress myindex "философия и счастье" --top_k 3 \
+  --tags философия --sources Claude --max-length 80
+python -m sigla compress myindex "философия и счастье" --top_k 3 \
+  --tags философия --sources Claude --min-rating 0.5 --max-length 80 --min-length 10
+Use `--max-length` and `--min-length` to control the size of the summary.
 6. Generate a compressed summary of top capsules:
 main
 
@@ -167,8 +170,9 @@ curl "http://localhost:8000/walk?query=философия&depth=2&limit=8"
 Summarize top capsules:
 
 ```bash
-curl "http://localhost:8000/compress?query=философия&top_k=3"
-```
+curl "http://localhost:8000/compress?query=философия&top_k=3&sources=Claude&max_length=80"
+curl "http://localhost:8000/compress?query=философия&top_k=3&sources=Claude&min_rating=0.8&max_length=80&min_length=10"
+The `max_length` and `min_length` parameters let you tune the summary length.
 
 Remove capsules via the API:
 

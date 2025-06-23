@@ -163,7 +163,16 @@ main
         from .graph import random_walk_links
         expanded = random_walk_links(results, store, steps=depth, restart=restart, limit=limit)
     else:
-        expanded = expand_with_links(results, store, depth=depth, limit=limit)
+    max_length: int = 60,
+    min_length: int = 5,
+        summary = compress_capsules(
+            results,
+            model_name=model,
+            max_length=max_length,
+            min_length=min_length,
+        )
+        max_length=max_length,
+        min_length=min_length,
     print(json.dumps(expanded, ensure_ascii=False, indent=2))
     siglog.log({"type": "walk", "query": query, "top_k": top_k, "depth": depth, "limit": limit, "algo": algo, "restart": restart, "tags": tags})
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
@@ -513,3 +522,7 @@ main
 
 if __name__ == "__main__":
     main()
+    compress_p.add_argument("--max-length", type=int, default=60)
+    compress_p.add_argument("--min-length", type=int, default=5)
+            args.max_length,
+            args.min_length,

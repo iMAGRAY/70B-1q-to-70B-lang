@@ -245,3 +245,12 @@ def compress_capsules(capsules: List[Dict[str, Any]], model_name: str = "sshleif
     text = "\n".join(c["text"] for c in capsules)
     summary = summarizer(text, max_length=60, min_length=5, do_sample=False)
     return summary[0]["summary_text"].strip()
+def compress_capsules(
+    capsules: List[Dict[str, Any]],
+    model_name: str = "sshleifer/distilbart-cnn-12-6",
+    max_length: int = 60,
+    min_length: int = 5,
+) -> str:
+    summary = summarizer(
+        text, max_length=max_length, min_length=min_length, do_sample=False
+    )

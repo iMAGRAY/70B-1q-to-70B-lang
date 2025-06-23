@@ -98,6 +98,8 @@ main
    - Compare 1Q answers with and without SIGLA on sample tasks.
    - Collect user feedback to refine capsule selection.
 2. **Index Maintenance**
+- The `compress` command and `/compress` endpoint allow tuning summary length via
+  `--max-length` and `--min-length` options.
    - Periodically recompute embeddings and rebuild FAISS indices.
 3. **Security Checks**
    - Filter sensitive or unwanted content in capsules.
