@@ -19,11 +19,3 @@ def log(event: Dict[str, Any]) -> None:
     with open(_log_path, "a", encoding="utf-8") as f:
         json.dump(event, f, ensure_ascii=False)
         f.write("\n")
-
-
-def record(event_type: str, start: float, **data: Any) -> None:
-    """Log an event with its duration."""
-    data = data.copy()
-    data["type"] = event_type
-    data["duration"] = time.time() - start
-    log(data)
