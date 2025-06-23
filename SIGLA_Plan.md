@@ -22,8 +22,15 @@ assumptions.
 4. **Embedding and Storage**
    - Use efficient open-source embedding models (e.g., E5 or Llama2-based).
    - Verify critical capsules by comparing with 70B embeddings when possible.
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
    - Store vectors and metadata (source, tags, quality rating) in a FAISS index. Use `Flat` by default but allow `HNSW` or `IVF` factories for larger datasets.
-   - Retrieval multiplies similarity by this rating so important capsules rank higher.
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+   - Store vectors and metadata (source, tags, quality rating) in a FAISS index.
+=======
+   - Store vectors and metadata (source, tags, quality rating) in a FAISS index. Use `Flat` by default but allow `HNSW` or `IVF` factories for larger datasets.
+main
+main
 
 ## 2. SIGLA Core
 1. **Embedding Requests**
@@ -111,7 +118,14 @@ assumptions.
 - `sigla/dsl.py` implements INTENT/RETRIEVE/MERGE/INJECT helpers for prompt construction.
 - Capsules now receive persistent `id`s and an optional `links` field for building a graph.
 - Graph expansion is provided via `sigla.graph.expand_with_links` and the CLI `walk` command.
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 - Random walk retrieval is implemented via `sigla.graph.random_walk_links` and selectable in the CLI `walk` command.
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+- Random walk retrieval is implemented via `sigla.graph.random_walk_links` and selectable in the CLI `walk` command.
+main
+main
 - The DSL exposes `EXPAND` for link-based retrieval.
 - `sigla/log.py` enables optional JSONL query logging for both the CLI and server.
 - `sigla/scripts.py` now includes an interactive `shell` command for quick manual tests.
@@ -122,32 +136,20 @@ assumptions.
 - `sigla/scripts.py` can list stored capsules via the `list` command.
 - `sigla/scripts.py` can remove capsules via the `prune` command.
 - `sigla/scripts.py` can summarize retrieved capsules via the `compress` command.
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 - `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
 - `sigla/scripts.py` can append capsules via the `update` command; the server
   exposes `/update` for the same purpose.
-- `sigla/scripts.py` can convert raw text to capsules via the `capsulate` command.
-- Capsules ingested or updated with `--link` automatically connect to nearest neighbors for graph retrieval.
 - Ingestion and reindexing support custom FAISS index factories via `--factory`.
 - `inject` and `shell` commands, as well as the `/ask` endpoint, accept a
   `temperature` parameter controlling how capsules are merged.
 - The API exposes `/info` and `/list` endpoints mirroring the CLI commands.
 - `/walk` and `/compress` endpoints support graph expansion and summarization.
 - `/prune` and `/reindex` endpoints mirror CLI commands for capsule removal and index rebuilding.
-- `sigla/scripts.py` can export capsules via the `export` command; the server provides a `/dump` endpoint.
-- `CapsuleStore` loads the embedding model lazily so read-only commands start quickly.
-- `sigla/scripts.py` can export capsule links to Graphviz DOT via the `graph` command.
-- The API exposes a `/graph` endpoint returning DOT data for visualization.
-- Capsule ingestion sanitizes obvious personal data like emails and long numeric
-  sequences before storage.
-- Capsules can be assigned a numeric rating via `--rating`, influencing search ranking.
-- Search and injection commands accept `--min-rating` to skip low-quality capsules.
-- Ratings can be adjusted after ingestion via the new `rate` command.
-- The API exposes a `/rate` endpoint for the same purpose.
-- Capsule metadata (rating and tags) can be modified via the `meta` command and the `/meta` endpoint.
-- `CapsuleStore` exposes `embed_query` and `embed_texts` for direct vectorization; `INTENT` uses these helpers.
-- If `sentence-transformers` isn't installed, `CapsuleStore` falls back to a
-  lightweight hash-based embedder so the CLI works without heavy dependencies.
-- `sigla/scripts.py` can output embeddings via the `embed` command and the server
-  exposes a matching `/embed` endpoint.
-- The package can be invoked as `python -m sigla` thanks to a new `__main__` module.
-- Log files now record the `duration` of each command or API call for performance tracking.
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+- `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
+- Ingestion and reindexing support custom FAISS index factories via `--factory`.
+main
+main

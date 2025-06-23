@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 from typing import List, Dict
 import random
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+from typing import List
+=======
+from typing import List, Dict
+import random
+main
+main
 
 from .core import CapsuleStore
 
@@ -28,6 +37,11 @@ def expand_with_links(capsules: List[dict], store: CapsuleStore, depth: int = 1,
                     return results
         queue = new_queue
     return results
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
 
 
 def random_walk_links(
@@ -64,41 +78,7 @@ def random_walk_links(
         meta["id"] = cid
         results.append(meta)
     return results
-
-
-def to_dot(store: CapsuleStore, limit: int | None = None, tags: List[str] | None = None) -> str:
-    """Return the capsule graph in Graphviz DOT format."""
-
-    def label(text: str) -> str:
-        text = text.replace("\n", " ").replace("\"", "\\\"")
-        return text[:40]
-
-    lines = ["digraph Capsules {"]
-    count = 0
-    for meta in store.meta:
-        if tags and not set(tags).intersection(meta.get("tags", [])):
-            continue
-        if limit and count >= limit:
-            break
-        cid = meta["id"]
-        lines.append(f"  {cid} [label=\"{label(meta['text'])}\"];")
-        for link in meta.get("links", []):
-            if link < 0 or link >= len(store.meta):
-                continue
-            lines.append(f"  {cid} -> {link};")
-        count += 1
-    lines.append("}")
-    return "\n".join(lines)
-
-
-def export_dot(
-    store: CapsuleStore,
-    path: str,
-    limit: int | None = None,
-    tags: List[str] | None = None,
-) -> None:
-    """Export the capsule graph to a Graphviz DOT file."""
-
-    dot = to_dot(store, limit=limit, tags=tags)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(dot)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
