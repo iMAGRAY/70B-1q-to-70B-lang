@@ -20,16 +20,18 @@ Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` t
 ]
 ```
 
-szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-2. Build an index:
+Run the CLI as `python -m sigla` (a shorthand for `python -m sigla.scripts`).
+
+python -m sigla capsulate answers.txt caps.json --tags философия --source Claude
+cat answers.txt | python -m sigla capsulate - - > caps.json
+python -m sigla ingest capsules.json myindex --factory HNSW32 --link 3 --tags philosophy --source Claude
+python -m sigla update more_caps.json myindex --link 3 --tags philosophy --source Claude
 
 ```bash
-python -m sigla.scripts ingest capsules.json myindex
-=======
-main
-2. Build an index (you can choose a FAISS index type with `--factory`):
+python -m sigla search myindex "философия и счастье" --tags философия
+python -m sigla walk myindex "философия" --depth 2 --limit 8 --algo random --tags философия
+python -m sigla inject myindex "философия и счастье" --top_k 3 --tags философия --temperature 0.7
+python -m sigla compress myindex "философия и счастье" --top_k 3 --tags философия
 
 ```bash
 python -m sigla.scripts ingest capsules.json myindex --factory HNSW32  # default is Flat
@@ -191,23 +193,23 @@ updates in JSONL format. This is useful for building a memory of interactions:
 python -m sigla.server myindex --log-file sigla.log
 ```
 
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-9. Start an interactive shell:
+python -m sigla shell myindex --top_k 3 --tags философия --temperature 0.7
+python -m sigla capsule myindex 0
 
 ```bash
-python -m sigla.scripts shell myindex --top_k 3 --tags философия --temperature 0.7
-=======
-8. Start an interactive shell:
+python -m sigla list myindex --limit 5 --tags философия
+python -m sigla export myindex dump.json --tags философия
+python -m sigla graph myindex graph.dot --limit 100
 
 ```bash
-python -m sigla.scripts shell myindex --top_k 3 --tags философия
-main
+python -m sigla stats sigla.log
+python -m sigla info myindex
 ```
 
-Type queries one per line; an empty line exits.
+python -m sigla prune myindex --ids 0,1 --tags philosophy
 
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-10. Show a stored capsule by its id:
+python -m sigla reindex myindex --model sentence-transformers/all-MiniLM-L6-v2 --factory HNSW32  # optional
+python -m sigla embed "пример текста" --model sentence-transformers/all-MiniLM-L6-v2
 =======
 9. Show a stored capsule by its id:
 main
