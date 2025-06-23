@@ -41,10 +41,10 @@ The resulting text can be injected into your model prompt or cached at a lower l
 4. Perform graph-based retrieval (if capsules include `links`):
 
 ```bash
-python -m sigla.scripts walk myindex "философия" --depth 2 --limit 8 --tags философия
+python -m sigla.scripts walk myindex "философия" --depth 2 --limit 8 --algo random --tags философия
 ```
 
-This expands results by following capsule links.
+Use `--algo bfs` (default) to simply follow links breadth-first or `--algo random` with `--restart` to explore the graph via a random walk.
 5. Generate a prompt snippet directly:
 
 ```bash

@@ -110,6 +110,7 @@ assumptions.
 - `sigla/dsl.py` implements INTENT/RETRIEVE/MERGE/INJECT helpers for prompt construction.
 - Capsules now receive persistent `id`s and an optional `links` field for building a graph.
 - Graph expansion is provided via `sigla.graph.expand_with_links` and the CLI `walk` command.
+- Random walk retrieval is implemented via `sigla.graph.random_walk_links` and selectable in the CLI `walk` command.
 - The DSL exposes `EXPAND` for link-based retrieval.
 - `sigla/log.py` enables optional JSONL query logging for both the CLI and server.
 - `sigla/scripts.py` now includes an interactive `shell` command for quick manual tests.

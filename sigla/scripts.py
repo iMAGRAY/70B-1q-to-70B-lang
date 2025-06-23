@@ -68,7 +68,16 @@ def compress_snippet(index_path: str, query: str, top_k: int, tags: list[str] | 
     siglog.log({"type": "compress", "query": query, "top_k": top_k, "tags": tags})
 
 
-def walk_search(index_path: str, query: str, top_k: int, depth: int, limit: int, tags: list[str] | None = None):
+def walk_search(
+    index_path: str,
+    query: str,
+    top_k: int,
+    depth: int,
+    limit: int,
+    tags: list[str] | None = None,
+    algo: str = "bfs",
+    restart: float = 0.5,
+):
     try:
         store = CapsuleStore()
         store.load(index_path)
@@ -76,9 +85,13 @@ def walk_search(index_path: str, query: str, top_k: int, depth: int, limit: int,
         print(f"error: {e}")
         return
     results = store.query(query, top_k=top_k, tags=tags)
-    expanded = expand_with_links(results, store, depth=depth, limit=limit)
+    if algo == "random":
+        from .graph import random_walk_links
+        expanded = random_walk_links(results, store, steps=depth, restart=restart, limit=limit)
+    else:
+        expanded = expand_with_links(results, store, depth=depth, limit=limit)
     print(json.dumps(expanded, ensure_ascii=False, indent=2))
-    siglog.log({"type": "walk", "query": query, "top_k": top_k, "depth": depth, "limit": limit, "tags": tags})
+    siglog.log({"type": "walk", "query": query, "top_k": top_k, "depth": depth, "limit": limit, "algo": algo, "restart": restart, "tags": tags})
 
 
 def show_capsule(index_path: str, idx: int) -> None:
@@ -243,6 +256,8 @@ def main():
     walk_p.add_argument("--top_k", type=int, default=5)
     walk_p.add_argument("--depth", type=int, default=1)
     walk_p.add_argument("--limit", type=int, default=10)
+    walk_p.add_argument("--algo", choices=["bfs", "random"], default="bfs")
+    walk_p.add_argument("--restart", type=float, default=0.5, help="restart prob for random walk")
     walk_p.add_argument("--tags")
 
     cap_p = subparsers.add_parser("capsule")
@@ -287,7 +302,16 @@ def main():
     elif args.cmd == "compress":
         compress_snippet(args.index_path, args.query, args.top_k, tags, args.model)
     elif args.cmd == "walk":
-        walk_search(args.index_path, args.query, args.top_k, args.depth, args.limit, tags)
+        walk_search(
+            args.index_path,
+            args.query,
+            args.top_k,
+            args.depth,
+            args.limit,
+            tags,
+            args.algo,
+            args.restart,
+        )
     elif args.cmd == "shell":
         shell(args.index_path, args.top_k, tags)
     elif args.cmd == "capsule":

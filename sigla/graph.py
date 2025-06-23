@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Dict
+import random
 
 from .core import CapsuleStore
 
@@ -26,4 +27,40 @@ def expand_with_links(capsules: List[dict], store: CapsuleStore, depth: int = 1,
                 if len(results) >= limit:
                     return results
         queue = new_queue
+    return results
+
+
+def random_walk_links(
+    capsules: List[dict],
+    store: CapsuleStore,
+    steps: int = 3,
+    restart: float = 0.5,
+    limit: int = 10,
+) -> List[dict]:
+    """Expand capsules via random walk with restart."""
+    if not capsules:
+        return []
+
+    start = [c["id"] for c in capsules]
+    visited: Dict[int, int] = {cid: 1 for cid in start}
+    current = list(start)
+
+    for _ in range(steps):
+        next_nodes = []
+        for cid in current:
+            links = store.meta[cid].get("links", [])
+            if links and random.random() > restart:
+                next_nodes.append(random.choice(links))
+            else:
+                next_nodes.append(random.choice(start))
+        current = next_nodes
+        for cid in current:
+            visited[cid] = visited.get(cid, 0) + 1
+
+    results = []
+    for cid, count in sorted(visited.items(), key=lambda x: -x[1])[:limit]:
+        meta = store.meta[cid].copy()
+        meta["score"] = float(count)
+        meta["id"] = cid
+        results.append(meta)
     return results

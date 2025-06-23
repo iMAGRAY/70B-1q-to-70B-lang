@@ -1,5 +1,6 @@
 from .core import CapsuleStore, merge_capsules, compress_capsules
 from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
+from .graph import random_walk_links
 from .log import start as start_log, log as log_event
 
 try:
@@ -17,6 +18,7 @@ __all__ = [
     "MERGE",
     "INJECT",
     "EXPAND",
+    "random_walk_links",
     "start_log",
     "log_event",
 ]
