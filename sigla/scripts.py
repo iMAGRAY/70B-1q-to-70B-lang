@@ -8,13 +8,29 @@ from .graph import expand_with_links
 from . import log as siglog
 
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 def ingest(json_file: str, index_path: str, model: str, factory: str):
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+def ingest(json_file: str, index_path: str, model: str):
+=======
+def ingest(json_file: str, index_path: str, model: str, factory: str):
+main
+main
     try:
         if Path(index_path + ".index").exists():
             store = CapsuleStore()
             store.load(index_path)
         else:
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
             store = CapsuleStore(model_name=model, index_factory=factory)
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+            store = CapsuleStore(model_name=model)
+=======
+            store = CapsuleStore(model_name=model, index_factory=factory)
+main
+main
     except MissingDependencyError as e:
         print(f"error: {e}")
         return
@@ -25,6 +41,7 @@ def ingest(json_file: str, index_path: str, model: str, factory: str):
     siglog.log({"type": "ingest", "count": len(capsules)})
 
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 def update_capsules(json_file: str, index_path: str) -> None:
     """Append capsules to an existing index."""
     try:
@@ -40,6 +57,8 @@ def update_capsules(json_file: str, index_path: str) -> None:
     siglog.log({"type": "update", "count": len(capsules)})
 
 
+=======
+main
 def search(index_path: str, query: str, top_k: int, tags: list[str] | None = None):
     try:
         store = CapsuleStore()
@@ -52,6 +71,7 @@ def search(index_path: str, query: str, top_k: int, tags: list[str] | None = Non
     siglog.log({"type": "search", "query": query, "top_k": top_k, "tags": tags, "results": results})
 
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 def inject_snippet(
     index_path: str,
     query: str,
@@ -59,6 +79,9 @@ def inject_snippet(
     tags: list[str] | None = None,
     temperature: float = 1.0,
 ) -> None:
+=======
+def inject_snippet(index_path: str, query: str, top_k: int, tags: list[str] | None = None):
+main
     try:
         store = CapsuleStore()
         store.load(index_path)
@@ -66,6 +89,7 @@ def inject_snippet(
         print(f"error: {e}")
         return
     results = store.query(query, top_k=top_k, tags=tags)
+    3szrfh-codex/разработать-sigla-для-моделирования-мышления
     snippet = INJECT(merge_capsules(results, temperature=temperature))
     print(snippet)
     siglog.log({
@@ -75,6 +99,11 @@ def inject_snippet(
         "tags": tags,
         "temperature": temperature,
     })
+=======
+    snippet = INJECT(merge_capsules(results))
+    print(snippet)
+    siglog.log({"type": "inject", "query": query, "top_k": top_k, "tags": tags})
+main
 
 
 def compress_snippet(index_path: str, query: str, top_k: int, tags: list[str] | None = None, model: str = "sshleifer/distilbart-cnn-12-6"):
@@ -95,6 +124,12 @@ def compress_snippet(index_path: str, query: str, top_k: int, tags: list[str] | 
     siglog.log({"type": "compress", "query": query, "top_k": top_k, "tags": tags})
 
 
+ 3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+def walk_search(index_path: str, query: str, top_k: int, depth: int, limit: int, tags: list[str] | None = None):
+=======
+ main
 def walk_search(
     index_path: str,
     query: str,
@@ -105,6 +140,10 @@ def walk_search(
     algo: str = "bfs",
     restart: float = 0.5,
 ):
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
     try:
         store = CapsuleStore()
         store.load(index_path)
@@ -112,6 +151,14 @@ def walk_search(
         print(f"error: {e}")
         return
     results = store.query(query, top_k=top_k, tags=tags)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+    expanded = expand_with_links(results, store, depth=depth, limit=limit)
+    print(json.dumps(expanded, ensure_ascii=False, indent=2))
+    siglog.log({"type": "walk", "query": query, "top_k": top_k, "depth": depth, "limit": limit, "tags": tags})
+=======
+main
     if algo == "random":
         from .graph import random_walk_links
         expanded = random_walk_links(results, store, steps=depth, restart=restart, limit=limit)
@@ -119,6 +166,10 @@ def walk_search(
         expanded = expand_with_links(results, store, depth=depth, limit=limit)
     print(json.dumps(expanded, ensure_ascii=False, indent=2))
     siglog.log({"type": "walk", "query": query, "top_k": top_k, "depth": depth, "limit": limit, "algo": algo, "restart": restart, "tags": tags})
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
 
 
 def show_capsule(index_path: str, idx: int) -> None:
@@ -152,13 +203,16 @@ def list_capsules(index_path: str, limit: int = 20, tags: list[str] | None = Non
             break
     print(json.dumps(results, ensure_ascii=False, indent=2))
 
-
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 def shell(
     index_path: str,
     top_k: int,
     tags: list[str] | None = None,
     temperature: float = 1.0,
 ) -> None:
+=======
+def shell(index_path: str, top_k: int, tags: list[str] | None = None) -> None:
+main
     """Run an interactive search loop printing merged context."""
     try:
         store = CapsuleStore()
@@ -175,6 +229,7 @@ def shell(
         if not query:
             break
         results = store.query(query, top_k=top_k, tags=tags)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
         snippet = INJECT(merge_capsules(results, temperature=temperature))
         print(snippet)
         siglog.log({
@@ -183,6 +238,11 @@ def shell(
             "top_k": top_k,
             "temperature": temperature,
         })
+=======
+        snippet = INJECT(merge_capsules(results))
+        print(snippet)
+        siglog.log({"type": "shell", "query": query, "top_k": top_k})
+main
 
 
 def show_stats(log_file: str) -> None:
@@ -244,6 +304,11 @@ def prune_capsules(index_path: str, ids: list[int] | None = None, tags: list[str
     print(f"removed {removed} capsules")
 
 
+ 3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
 def reindex_store(index_path: str, model: str | None = None, factory: str | None = None) -> None:
     """Rebuild embeddings for all capsules, optionally with a new model or index type."""
     try:
@@ -258,6 +323,10 @@ def reindex_store(index_path: str, model: str | None = None, factory: str | None
     print("index rebuilt")
 
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
 def main():
     parser = argparse.ArgumentParser(description="SIGLA utility")
     subparsers = parser.add_subparsers(dest="cmd")
@@ -267,11 +336,18 @@ def main():
     ingest_p.add_argument("json_file")
     ingest_p.add_argument("index_path")
     ingest_p.add_argument("--model", default="sentence-transformers/all-MiniLM-L6-v2")
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     ingest_p.add_argument("--factory", default="Flat", help="FAISS index factory")
 
     update_p = subparsers.add_parser("update", help="append capsules to an existing index")
     update_p.add_argument("json_file")
     update_p.add_argument("index_path")
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+    ingest_p.add_argument("--factory", default="Flat", help="FAISS index factory")
+main
+main
 
     search_p = subparsers.add_parser("search")
     search_p.add_argument("index_path")
@@ -284,7 +360,10 @@ def main():
     inject_p.add_argument("query")
     inject_p.add_argument("--top_k", type=int, default=5)
     inject_p.add_argument("--tags")
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     inject_p.add_argument("--temperature", type=float, default=1.0)
+=======
+ main
 
     compress_p = subparsers.add_parser("compress", help="summarize retrieved capsules")
     compress_p.add_argument("index_path")
@@ -299,8 +378,16 @@ def main():
     walk_p.add_argument("--top_k", type=int, default=5)
     walk_p.add_argument("--depth", type=int, default=1)
     walk_p.add_argument("--limit", type=int, default=10)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     walk_p.add_argument("--algo", choices=["bfs", "random"], default="bfs")
     walk_p.add_argument("--restart", type=float, default=0.5, help="restart prob for random walk")
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+    walk_p.add_argument("--algo", choices=["bfs", "random"], default="bfs")
+    walk_p.add_argument("--restart", type=float, default=0.5, help="restart prob for random walk")
+main
+main
     walk_p.add_argument("--tags")
 
     cap_p = subparsers.add_parser("capsule")
@@ -317,11 +404,20 @@ def main():
     prune_p.add_argument("--ids")
     prune_p.add_argument("--tags")
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
     reindex_p = subparsers.add_parser("reindex", help="rebuild embeddings")
     reindex_p.add_argument("index_path")
     reindex_p.add_argument("--model")
     reindex_p.add_argument("--factory")
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
     info_p = subparsers.add_parser("info", help="show index summary")
     info_p.add_argument("index_path")
 
@@ -329,7 +425,10 @@ def main():
     shell_p.add_argument("index_path")
     shell_p.add_argument("--top_k", type=int, default=5)
     shell_p.add_argument("--tags")
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     shell_p.add_argument("--temperature", type=float, default=1.0)
+=======
+main
 
     stats_p = subparsers.add_parser("stats", help="summarize a log file")
     stats_p.add_argument("log_file")
@@ -339,6 +438,7 @@ def main():
         siglog.start(args.log_file)
     tags = args.tags.split(',') if hasattr(args, 'tags') and args.tags else None
     if args.cmd == "ingest":
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
         ingest(args.json_file, args.index_path, args.model, args.factory)
     elif args.cmd == "update":
         update_capsules(args.json_file, args.index_path)
@@ -349,6 +449,23 @@ def main():
     elif args.cmd == "compress":
         compress_snippet(args.index_path, args.query, args.top_k, tags, args.model)
     elif args.cmd == "walk":
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+        ingest(args.json_file, args.index_path, args.model)
+=======
+        ingest(args.json_file, args.index_path, args.model, args.factory)
+main
+    elif args.cmd == "search":
+        search(args.index_path, args.query, args.top_k, tags)
+    elif args.cmd == "inject":
+        inject_snippet(args.index_path, args.query, args.top_k, tags)
+    elif args.cmd == "compress":
+        compress_snippet(args.index_path, args.query, args.top_k, tags, args.model)
+    elif args.cmd == "walk":
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+        walk_search(args.index_path, args.query, args.top_k, args.depth, args.limit, tags)
+=======
+ main
         walk_search(
             args.index_path,
             args.query,
@@ -359,8 +476,14 @@ def main():
             args.algo,
             args.restart,
         )
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     elif args.cmd == "shell":
         shell(args.index_path, args.top_k, tags, args.temperature)
+=======
+main
+    elif args.cmd == "shell":
+        shell(args.index_path, args.top_k, tags)
+main
     elif args.cmd == "capsule":
         show_capsule(args.index_path, args.id)
     elif args.cmd == "list":
@@ -370,8 +493,16 @@ def main():
         id_list = [int(x) for x in args.ids.split(',')] if args.ids else None
         prune_tags = args.tags.split(',') if args.tags else None
         prune_capsules(args.index_path, id_list, prune_tags)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
     elif args.cmd == "reindex":
         reindex_store(args.index_path, args.model, args.factory)
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+    elif args.cmd == "reindex":
+        reindex_store(args.index_path, args.model, args.factory)
+main
+ main
     elif args.cmd == "info":
         show_info(args.index_path)
     elif args.cmd == "stats":

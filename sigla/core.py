@@ -25,11 +25,21 @@ class MissingDependencyError(RuntimeError):
 class CapsuleStore:
     """A lightweight FAISS-backed capsule database."""
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+=======
+main
     def __init__(
         self,
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         index_factory: str = "Flat",
     ):
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
         if SentenceTransformer is None:
             raise MissingDependencyError("sentence-transformers package is required")
         if faiss is None:
@@ -38,8 +48,17 @@ class CapsuleStore:
         self.model_name = model_name
         self.model = SentenceTransformer(model_name)
         self.dimension = self.model.get_sentence_embedding_dimension()
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
         self.index_factory = index_factory
         self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+        self.index = faiss.IndexFlatIP(self.dimension)
+=======
+        self.index_factory = index_factory
+        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+main
+main
         self.meta: List[Dict[str, Any]] = []
 
     def add_capsules(self, capsules: List[Dict[str, Any]]):
@@ -48,8 +67,16 @@ class CapsuleStore:
         texts = [c["text"] for c in capsules]
         vectors = self.model.encode(texts, convert_to_numpy=True)
         faiss.normalize_L2(vectors)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
         if not self.index.is_trained:
             self.index.train(vectors)
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+        if not self.index.is_trained:
+            self.index.train(vectors)
+main
+main
         self.index.add(vectors)
         for i, cap in enumerate(capsules):
             meta = cap.copy()
@@ -60,6 +87,12 @@ class CapsuleStore:
     def save(self, path: str):
         faiss.write_index(self.index, path + ".index")
         with open(path + ".json", "w", encoding="utf-8") as f:
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+            json.dump({"model": self.model_name, "meta": self.meta}, f, ensure_ascii=False, indent=2)
+=======
+main
             json.dump(
                 {
                     "model": self.model_name,
@@ -70,6 +103,10 @@ class CapsuleStore:
                 ensure_ascii=False,
                 indent=2,
             )
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
 
     def load(self, path: str):
         self.index = faiss.read_index(path + ".index")
@@ -77,7 +114,14 @@ class CapsuleStore:
             data = json.load(f)
             self.meta = data["meta"]
             self.model_name = data.get("model", self.model_name)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
             self.index_factory = data.get("factory", "Flat")
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+            self.index_factory = data.get("factory", "Flat")
+main
+main
         self.model = SentenceTransformer(self.model_name)
 
     def query(self, text: str, top_k: int = 5, tags: List[str] | None = None) -> List[Dict[str, Any]]:
@@ -129,6 +173,11 @@ class CapsuleStore:
         self.meta = new_meta
         return removed
 
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
     def rebuild_index(self, model_name: str | None = None, index_factory: str | None = None) -> None:
         """Recompute all embeddings and rebuild the FAISS index."""
         if model_name:
@@ -147,7 +196,11 @@ class CapsuleStore:
             self.index.add(vectors)
         for idx, meta in enumerate(self.meta):
             meta["id"] = idx
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 
+=======
+main
+main
 
 def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> str:
     """Merge capsules using a softmax-weighted combination."""
