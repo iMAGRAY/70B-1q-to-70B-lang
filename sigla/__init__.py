@@ -1,4 +1,4 @@
-from .core import CapsuleStore, merge_capsules, compress_capsules
+__version__ = "0.1.1"
 from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
 3szrfh-codex/разработать-sigla-для-моделирования-мышления
 from .graph import random_walk_links
