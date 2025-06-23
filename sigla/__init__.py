@@ -1,6 +1,9 @@
 from .core import CapsuleStore, merge_capsules, compress_capsules
 from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
 from .graph import random_walk_links
+main
 from .log import start as start_log, log as log_event
 
 try:
@@ -18,7 +21,10 @@ __all__ = [
     "MERGE",
     "INJECT",
     "EXPAND",
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
     "random_walk_links",
+main
     "start_log",
     "log_event",
 ]

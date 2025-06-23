@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+from typing import List
+=======
 from typing import List, Dict
 import random
+main
 
 from .core import CapsuleStore
 
@@ -28,6 +32,8 @@ def expand_with_links(capsules: List[dict], store: CapsuleStore, depth: int = 1,
                     return results
         queue = new_queue
     return results
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
 
 
 def random_walk_links(
@@ -64,3 +70,4 @@ def random_walk_links(
         meta["id"] = cid
         results.append(meta)
     return results
+main
