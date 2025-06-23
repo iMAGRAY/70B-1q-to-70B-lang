@@ -6,11 +6,15 @@ from .core import CapsuleStore
 
 
 def ingest(json_file: str, index_path: str, model: str):
+<<<<<<< fivfkg-codex/разработать-sigla-для-моделирования-мышления
     if Path(index_path + ".index").exists():
         store = CapsuleStore()
         store.load(index_path)
     else:
         store = CapsuleStore(model_name=model)
+=======
+    store = CapsuleStore(model_name=model)
+>>>>>>> main
     with open(json_file, 'r', encoding='utf-8') as f:
         capsules = json.load(f)
     store.add_capsules(capsules)

@@ -105,5 +105,9 @@ assumptions.
 
 ### Implementation Progress
 - `sigla/core.py` provides an initial FAISS-based capsule store with embedding and search.
+<<<<<<< fivfkg-codex/разработать-sigla-для-моделирования-мышления
 - `sigla/scripts.py` offers CLI commands to ingest capsules and run searches, and can append to an existing index.
 - `sigla/server.py` exposes a FastAPI service for querying and updating the capsule index.
+=======
+- `sigla/scripts.py` offers simple CLI commands to ingest capsules and run searches.
+>>>>>>> main
