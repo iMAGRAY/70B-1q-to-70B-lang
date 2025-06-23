@@ -23,6 +23,8 @@ Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` t
 szrfh-codex/разработать-sigla-для-моделирования-мышления
 =======
 xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+# or use '-' to read from stdin or write to stdout
+cat answers.txt | python -m sigla.scripts capsulate - - > caps.json
 2. Build an index:
 
 ```bash

@@ -52,56 +52,144 @@ def update_capsules(json_file: str, index_path: str) -> None:
         return
     with open(json_file, "r", encoding="utf-8") as f:
         capsules = json.load(f)
-    store.add_capsules(capsules)
-    store.save(index_path)
-    siglog.log({"type": "update", "count": len(capsules)})
+def capsulate_file(
+    input_file: str,
+    output_file: str,
+    tags: list[str] | None = None,
+    source: str | None = None,
+) -> None:
+    """Convert raw text into capsule JSON.
 
+    ``input_file`` or ``output_file`` can be ``-`` to denote standard
+    input or output.
+    """
+    if input_file == "-":
+        import sys
 
-=======
-main
-def search(index_path: str, query: str, top_k: int, tags: list[str] | None = None):
-    try:
-        store = CapsuleStore()
-        store.load(index_path)
-    except MissingDependencyError as e:
-        print(f"error: {e}")
-        return
-    results = store.query(query, top_k=top_k, tags=tags)
-    print(json.dumps(results, ensure_ascii=False, indent=2))
-    siglog.log({"type": "search", "query": query, "top_k": top_k, "tags": tags, "results": results})
-
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-def inject_snippet(
+        text = sys.stdin.read()
+    else:
+        with open(input_file, "r", encoding="utf-8") as f:
+            text = f.read()
+    if output_file == "-":
+        json.dump(capsules, sys.stdout, ensure_ascii=False, indent=2)
+        if not sys.stdout.isatty():
+            sys.stdout.write("\n")
+    else:
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(capsules, f, ensure_ascii=False, indent=2)
+    siglog.log(
+        {
+            "type": "search",
+            "query": query,
+            "top_k": top_k,
+            "tags": tags,
+            "results": results,
+        }
+    )
+    siglog.log(
+        {
+            "type": "inject",
+            "query": query,
+            "top_k": top_k,
+            "tags": tags,
+            "temperature": temperature,
+        }
+    )
+def compress_snippet(
     index_path: str,
     query: str,
     top_k: int,
     tags: list[str] | None = None,
-    temperature: float = 1.0,
+    model: str = "sshleifer/distilbart-cnn-12-6",
+):
+
+
+        expanded = random_walk_links(
+            results, store, steps=depth, restart=restart, limit=limit
+        )
+    siglog.log(
+        {
+            "type": "walk",
+            "query": query,
+            "top_k": top_k,
+            "depth": depth,
+            "limit": limit,
+            "algo": algo,
+            "restart": restart,
+            "tags": tags,
+        }
+    )
+
+
+def list_capsules(
+    index_path: str, limit: int = 20, tags: list[str] | None = None
 ) -> None:
-=======
-def inject_snippet(index_path: str, query: str, top_k: int, tags: list[str] | None = None):
-main
-    try:
+        siglog.log(
+            {
+                "type": "shell",
+                "query": query,
+                "top_k": top_k,
+                "temperature": temperature,
+            }
+        )
+def export_capsules(
+    index_path: str, output_file: str, tags: list[str] | None = None
+) -> None:
+def export_graph(
+    index_path: str,
+    output_file: str,
+    limit: int | None = None,
+    tags: list[str] | None = None,
+) -> None:
+
+def prune_capsules(
+    index_path: str, ids: list[int] | None = None, tags: list[str] | None = None
+) -> None:
+    siglog.log(
+        {"type": "prune", "removed": removed, "ids": sorted(remove_set), "tags": tags}
+    )
+def reindex_store(
+    index_path: str, model: str | None = None, factory: str | None = None
+) -> None:
         store = CapsuleStore()
         store.load(index_path)
     except MissingDependencyError as e:
         print(f"error: {e}")
         return
-    results = store.query(query, top_k=top_k, tags=tags)
-    3szrfh-codex/разработать-sigla-для-моделирования-мышления
-    snippet = INJECT(merge_capsules(results, temperature=temperature))
-    print(snippet)
-    siglog.log({
-        "type": "inject",
-        "query": query,
-        "top_k": top_k,
-        "tags": tags,
-        "temperature": temperature,
-    })
-=======
-    snippet = INJECT(merge_capsules(results))
-    print(snippet)
+    ingest_p.add_argument(
+        "--link", type=int, default=0, help="auto-link each new capsule to N neighbors"
+    )
+    ingest_p.add_argument(
+        "--no-dedup",
+        action="store_false",
+        dest="dedup",
+        default=True,
+        help="allow duplicate texts",
+    )
+
+    update_p = subparsers.add_parser(
+        "update", help="append capsules to an existing index"
+    )
+    update_p.add_argument(
+        "--link", type=int, default=0, help="auto-link each new capsule to N neighbors"
+    )
+    update_p.add_argument(
+        "--no-dedup",
+        action="store_false",
+        dest="dedup",
+        default=True,
+        help="allow duplicate texts",
+    )
+    walk_p.add_argument(
+        "--restart", type=float, default=0.5, help="restart prob for random walk"
+    )
+    tags = args.tags.split(",") if hasattr(args, "tags") and args.tags else None
+        cap_tags = args.tags.split(",") if args.tags else None
+        list_tags = args.tags.split(",") if args.tags else None
+        export_tags = args.tags.split(",") if args.tags else None
+        graph_tags = args.tags.split(",") if args.tags else None
+        id_list = [int(x) for x in args.ids.split(",")] if args.ids else None
+        prune_tags = args.tags.split(",") if args.tags else None
     siglog.log({"type": "inject", "query": query, "top_k": top_k, "tags": tags})
 main
 
