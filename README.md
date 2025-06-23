@@ -7,7 +7,7 @@ etrieves relevant capsules and injects them into the 1Q model.
 
 ## Installation
 
-Run `pip install faiss-cpu sentence-transformers fastapi uvicorn` to install optional dependencies.
+Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` to install optional dependencies.
 
 ## Usage
 
@@ -53,7 +53,15 @@ python -m sigla.scripts inject myindex "философия и счастье" --
 
 This prints the `[Контекст]` block ready to prepend to 1Q.
 
-6. Run the API server:
+6. Generate a compressed summary of top capsules:
+
+```bash
+python -m sigla.scripts compress myindex "философия и счастье" --top_k 3 --tags философия
+```
+
+This attempts to summarize the retrieved capsules using a local summarization model.
+
+7. Run the API server:
 
 ```bash
 python -m sigla.server myindex
@@ -80,7 +88,7 @@ updates in JSONL format. This is useful for building a memory of interactions:
 python -m sigla.server myindex --log-file sigla.log
 ```
 
-7. Start an interactive shell:
+8. Start an interactive shell:
 
 ```bash
 python -m sigla.scripts shell myindex --top_k 3 --tags философия
@@ -88,7 +96,7 @@ python -m sigla.scripts shell myindex --top_k 3 --tags философия
 
 Type queries one per line; an empty line exits.
 
-8. Show a stored capsule by its id:
+9. Show a stored capsule by its id:
 
 ```bash
 python -m sigla.scripts capsule myindex 0
@@ -96,13 +104,13 @@ python -m sigla.scripts capsule myindex 0
 
 This prints the capsule's text and metadata in JSON form.
 
-9. List stored capsules (optionally filter by tags):
+10. List stored capsules (optionally filter by tags):
 
 ```bash
 python -m sigla.scripts list myindex --limit 5 --tags философия
 ```
 
-10. Summarize a log file to see how commands are used:
+11. Summarize a log file to see how commands are used:
 
 ```bash
 python -m sigla.scripts stats sigla.log
@@ -110,14 +118,14 @@ python -m sigla.scripts stats sigla.log
 
 This prints a JSON object with counts for each logged event type.
 
-11. Inspect index information:
+12. Inspect index information:
 ```bash
 python -m sigla.scripts info myindex
 ```
 
 This lists the embedding model, dimension, capsule count and tag distribution.
 
-12. Prune capsules by id or tags:
+13. Prune capsules by id or tags:
 
 ```bash
 python -m sigla.scripts prune myindex --ids 0,1 --tags philosophy

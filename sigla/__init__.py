@@ -1,4 +1,4 @@
-from .core import CapsuleStore, merge_capsules
+from .core import CapsuleStore, merge_capsules, compress_capsules
 from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
 from .log import start as start_log, log as log_event
 
@@ -10,6 +10,7 @@ except Exception:  # pragma: no cover - optional dependency
 __all__ = [
     "CapsuleStore",
     "merge_capsules",
+    "compress_capsules",
     "SiglaApp",
     "INTENT",
     "RETRIEVE",

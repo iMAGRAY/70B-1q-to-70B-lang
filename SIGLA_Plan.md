@@ -119,3 +119,4 @@ assumptions.
 - `sigla/scripts.py` can show index details via the `info` command.
 - `sigla/scripts.py` can list stored capsules via the `list` command.
 - `sigla/scripts.py` can remove capsules via the `prune` command.
+- `sigla/scripts.py` can summarize retrieved capsules via the `compress` command.

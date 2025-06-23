@@ -11,6 +11,11 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     SentenceTransformer = None
 
+try:
+    from transformers import pipeline
+except Exception:  # pragma: no cover - optional dependency
+    pipeline = None
+
 
 class MissingDependencyError(RuntimeError):
     """Raised when optional dependencies are not available."""
@@ -134,3 +139,20 @@ def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> 
     ordering = np.argsort(-weights)
     texts = [capsules[i]["text"] for i in ordering]
     return "\n".join(texts)
+
+
+def compress_capsules(capsules: List[Dict[str, Any]], model_name: str = "sshleifer/distilbart-cnn-12-6") -> str:
+    """Summarize a list of capsules into a short snippet."""
+    if not capsules:
+        return ""
+    if pipeline is None:
+        raise MissingDependencyError("transformers package is required for compression")
+
+    try:
+        summarizer = pipeline("summarization", model=model_name)
+    except Exception as e:  # pragma: no cover - optional dependency
+        raise MissingDependencyError(str(e))
+
+    text = "\n".join(c["text"] for c in capsules)
+    summary = summarizer(text, max_length=60, min_length=5, do_sample=False)
+    return summary[0]["summary_text"].strip()

@@ -50,6 +50,24 @@ def inject_snippet(index_path: str, query: str, top_k: int, tags: list[str] | No
     siglog.log({"type": "inject", "query": query, "top_k": top_k, "tags": tags})
 
 
+def compress_snippet(index_path: str, query: str, top_k: int, tags: list[str] | None = None, model: str = "sshleifer/distilbart-cnn-12-6"):
+    """Retrieve capsules and summarize them."""
+    try:
+        store = CapsuleStore()
+        store.load(index_path)
+    except MissingDependencyError as e:
+        print(f"error: {e}")
+        return
+    results = store.query(query, top_k=top_k, tags=tags)
+    try:
+        from .core import compress_capsules
+        summary = compress_capsules(results, model_name=model)
+        print(summary)
+    except MissingDependencyError as e:
+        print(f"error: {e}")
+    siglog.log({"type": "compress", "query": query, "top_k": top_k, "tags": tags})
+
+
 def walk_search(index_path: str, query: str, top_k: int, depth: int, limit: int, tags: list[str] | None = None):
     try:
         store = CapsuleStore()
@@ -198,6 +216,13 @@ def main():
     inject_p.add_argument("--top_k", type=int, default=5)
     inject_p.add_argument("--tags")
 
+    compress_p = subparsers.add_parser("compress", help="summarize retrieved capsules")
+    compress_p.add_argument("index_path")
+    compress_p.add_argument("query")
+    compress_p.add_argument("--top_k", type=int, default=5)
+    compress_p.add_argument("--model", default="sshleifer/distilbart-cnn-12-6")
+    compress_p.add_argument("--tags")
+
     walk_p = subparsers.add_parser("walk")
     walk_p.add_argument("index_path")
     walk_p.add_argument("query")
@@ -241,6 +266,8 @@ def main():
         search(args.index_path, args.query, args.top_k, tags)
     elif args.cmd == "inject":
         inject_snippet(args.index_path, args.query, args.top_k, tags)
+    elif args.cmd == "compress":
+        compress_snippet(args.index_path, args.query, args.top_k, tags, args.model)
     elif args.cmd == "walk":
         walk_search(args.index_path, args.query, args.top_k, args.depth, args.limit, tags)
     elif args.cmd == "shell":
