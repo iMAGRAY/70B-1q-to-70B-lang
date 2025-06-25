@@ -1,75 +1,88 @@
 from __future__ import annotations
 
-try:
-TrainingStart
-    from fastapi import FastAPI, HTTPException
-    FASTAPI_AVAILABLE = True
-except Exception:  # pragma: no cover - optional dependency
-    FastAPI = None
-    HTTPException = None
-    FASTAPI_AVAILABLE = False
-=======
-    from fastapi import FastAPI, HTTPException, Depends
-except Exception:  # pragma: no cover - optional dependency
-    FastAPI = None
-    class HTTPException(Exception):
-        def __init__(self, *args, **kwargs):  # noqa: D401,E501
-            super().__init__(*args)
-    def Depends(*args, **kwargs):
-        return lambda: True
- main
-
-from typing import List, Optional
 import argparse
 import os
+import contextlib
+from typing import List, Optional
 
- TrainingStart
-from .core import CapsuleStore, merge_capsules, compress_capsules, MissingDependencyError
-from .graph import expand_with_links, random_walk_links
-=======
+# ---------------------------------------------------------------------------
+# Optional FastAPI import – graceful fallback when dependency missing.
+# ---------------------------------------------------------------------------
+
+try:
+    from fastapi import FastAPI, HTTPException, Depends, Header
+    from contextlib import asynccontextmanager
+except Exception:  # pragma: no cover – FastAPI not installed
+    FastAPI = None  # type: ignore
+    asynccontextmanager = contextlib.contextmanager  # type: ignore
+
+    class HTTPException(Exception):
+        def __init__(self, *args, **kwargs):  # noqa: D401
+            super().__init__(*args)
+
+    def Depends(*_a, **_kw):  # type: ignore
+        return lambda: True
+
+    def Header(*_a, **_kw):  # type: ignore
+        return None
+
+# ---------------------------------------------------------------------------
+
 from . import log as siglog
-from .core import (
-    CapsuleStore,
-    merge_capsules,
-    compress_capsules,
-    MissingDependencyError,
-)
+from .core import CapsuleStore, merge_capsules, compress_capsules, MissingDependencyError
 from .graph import expand_with_links, random_walk_links
 
 # ---------------------------------------------------------------------------
 # Auth helper
 # ---------------------------------------------------------------------------
 
-def _require_api_key():
-    """Простая заглушка для аутентификации."""
-    return True
+API_KEY_ENV = "SIGLA_API_KEY"
+
+def _require_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> bool:  # noqa: D401
+    """Проверка API-ключа через заголовок `X-API-Key`.
+
+    • Если переменная окружения `SIGLA_API_KEY` не установлена — аутентификация
+      отключена (возвращаем `True`).  Это сохраняет прежнее поведение «без
+      безопасности из коробки».
+    • При установленном ключе – сравниваем его со значением заголовка.
+    """
+
+    expected = os.getenv(API_KEY_ENV)
+    if not expected:  # security off
+        return True
+    if x_api_key == expected:
+        return True
+    raise HTTPException(status_code=403, detail="Invalid API key")
 
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
-main
-
-if FastAPI:
-    app = FastAPI(title="SIGLA Server")
-else:
-    app = None  # type: ignore
 
 store: CapsuleStore | None = None
 index_path: str = ""
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI app."""
+    # Startup: load store
+    global store
+    if not index_path:
+        raise RuntimeError("Index path not set")
+    local_store = CapsuleStore()
+    if os.path.exists(index_path + ".index"):
+        local_store.load(index_path)
+        store = local_store
+    
+    yield
+    
+    # Shutdown: nothing to do
+
+if FastAPI:
+    app = FastAPI(title="SIGLA Server", lifespan=lifespan)
+else:
+    app = None  # type: ignore
+
 if app:
-
-    @app.on_event("startup")
-    def _load_store() -> None:
-        """Загружаем/создаём CapsuleStore при старте API."""
-        global store
-        if not index_path:
-            raise RuntimeError("Index path not set")
-        local_store = CapsuleStore()
-        if os.path.exists(index_path + ".index"):
-            local_store.load(index_path)
-            store = local_store
-
     @app.get("/search")
     def search(query: str, top_k: int = 5, tags: str | None = None):
         if store is None:
@@ -94,9 +107,6 @@ if app:
         tag_list = tags.split(",") if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
         merged = merge_capsules(results, temperature=temperature)
-TrainingStart
-        siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "temperature": temperature, "context": merged})
-=======
         siglog.log(
             {
                 "type": "ask",
@@ -107,7 +117,6 @@ TrainingStart
                 "context": merged,
             }
         )
-main
         return {"context": merged}
 
     @app.get("/capsule/{idx}")
@@ -269,17 +278,12 @@ main
         )
         return {"model": store.model_name, "factory": store.index_factory}
 
- TrainingStart
-
-def cli():
-=======
 # ---------------------------------------------------------------------------
 # CLI wrapper (uvicorn)
 # ---------------------------------------------------------------------------
 
 def cli() -> None:
     """Запускает FastAPI-сервер через uvicorn."""
- main
     parser = argparse.ArgumentParser(description="Run SIGLA API server")
     parser.add_argument("index_path", help="Path prefix of the FAISS index")
     parser.add_argument("--host", default="127.0.0.1")

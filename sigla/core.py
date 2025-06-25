@@ -29,13 +29,14 @@ except ImportError:
     SentenceTransformer = None
 
 try:
-    from transformers import AutoTokenizer, AutoModel
+    from transformers import AutoTokenizer, AutoModel, pipeline
     import torch
     import torch.nn.functional as F
     TORCH_AVAILABLE = True
 except ImportError:
     AutoTokenizer = None
     AutoModel = None
+    pipeline = None
     torch = None
     F = None
     TORCH_AVAILABLE = False
@@ -49,138 +50,77 @@ class MissingDependencyError(RuntimeError):
 
 
 class TransformersEmbeddings:
-    """Embedding wrapper for local Transformers models."""
-    
+    """Simple wrapper for HuggingFace transformer models for embeddings."""
+
     def __init__(self, model_path: str, device: str = "auto"):
-        if not TORCH_AVAILABLE or AutoTokenizer is None or AutoModel is None:
-            raise MissingDependencyError("transformers and torch packages are required")
-        
-        self.model_path = model_path
+        """Initialize with a local model path or HF model name."""
+        if not TORCH_AVAILABLE:
+            raise MissingDependencyError("torch and transformers packages are required")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        self.model = AutoModel.from_pretrained(model_path)
         self.device = self._get_device(device)
-        
-        print(f"Loading model from {model_path}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
         self.model.to(self.device)
-        self.model.eval()
-        
-        # Get embedding dimension
-        assert torch is not None  # For type checker
-        with torch.no_grad():
-            test_input = self.tokenizer("test", return_tensors="pt", padding=True, truncation=True)
-            test_input = {k: v.to(self.device) for k, v in test_input.items()}
-            test_output = self.model(**test_input)
-            # Try different ways to get embeddings
-            if hasattr(test_output, 'last_hidden_state'):
-                self.dimension = test_output.last_hidden_state.shape[-1]
-            elif hasattr(test_output, 'pooler_output'):
-                self.dimension = test_output.pooler_output.shape[-1]
-            else:
-                # Fallback - assume standard BERT-like output
-                self.dimension = test_output[0].shape[-1]
-        
-        print(f"Model loaded. Dimension: {self.dimension}")
-    
+
     def _get_device(self, device: str) -> str:
-        """Determine the best device to use."""
-        if not TORCH_AVAILABLE or torch is None:
-            return "cpu"
-            
-        if device == "auto":
-            if torch.cuda.is_available():
-                return "cuda"
-            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                return "mps"
-            else:
-                return "cpu"
-        return device
-    
+        """Determine the torch device to use."""
+        if device != "auto":
+            return device
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
+
     def _mean_pooling(self, model_output, attention_mask):
-        """Apply mean pooling to get sentence embeddings."""
-        assert torch is not None  # For type checker
-        token_embeddings = model_output[0]  # First element contains all token embeddings
+        """Mean pooling operation to get sentence embeddings."""
+        token_embeddings = model_output[0]
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-    
+
     def encode(
         self,
         texts: List[str],
         batch_size: int = 32,
         convert_to_numpy: bool = True,
     ) -> Union[np.ndarray, Any]:
-        """Encode texts to embeddings."""
-        if not TORCH_AVAILABLE or torch is None or F is None:
-            raise MissingDependencyError("torch is required for encoding")
-            
+        """Encode a list of texts into embeddings."""
         all_embeddings = []
-        
-        with torch.no_grad():
-            for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
-                
-                # Tokenize
-                encoded_input = self.tokenizer(
-                    batch_texts, 
-                    padding=True, 
-                    truncation=True, 
-                    return_tensors='pt',
-                    max_length=512
-                )
-                encoded_input = {k: v.to(self.device) for k, v in encoded_input.items()}
-                
-                # Get model output
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            encoded_input = self.tokenizer(
+                batch, padding=True, truncation=True, return_tensors="pt"
+            ).to(self.device)
+
+            with torch.no_grad():
                 model_output = self.model(**encoded_input)
-                
-                # Get embeddings - try different methods
-                if hasattr(model_output, 'pooler_output') and model_output.pooler_output is not None:
-                    # Use pooler output if available
-                    embeddings = model_output.pooler_output
-                elif hasattr(model_output, 'last_hidden_state'):
-                    # Use mean pooling of last hidden state
-                    embeddings = self._mean_pooling(model_output, encoded_input['attention_mask'])
-                else:
-                    # Fallback - mean pool the first output
-                    embeddings = self._mean_pooling(model_output, encoded_input['attention_mask'])
-                
-                # Normalize embeddings
-                embeddings = F.normalize(embeddings, p=2, dim=1)
-                all_embeddings.append(embeddings.cpu())
-        
-        # Concatenate all embeddings
-        all_embeddings = torch.cat(all_embeddings, dim=0)
-        
+
+            embeddings = self._mean_pooling(model_output, encoded_input["attention_mask"])
+            embeddings = F.normalize(embeddings, p=2, dim=1)
+
+            if convert_to_numpy:
+                embeddings = embeddings.cpu().numpy()
+
+            all_embeddings.append(embeddings)
+
         if convert_to_numpy:
-            return all_embeddings.cpu().numpy()
-        return all_embeddings
-    
+            return np.vstack(all_embeddings)
+        else:
+            return torch.cat(all_embeddings, dim=0)
+
     def get_sentence_embedding_dimension(self) -> int:
-        """Get the dimension of embeddings."""
-        return self.dimension
+        """Return the dimension of the sentence embeddings."""
+        return self.model.config.hidden_size
 
 
 class CapsuleStore:
-TrainingStart
-    """A lightweight FAISS-backed capsule database."""
-=======
-    """Lightweight FAISS-backed capsule DB with automatic linking.
+    """A lightweight FAISS-backed capsule database.
 
-    Parameters
-    ----------
-    model_name
-        Name (or HF hub path) of the encoder to use.  A **local** model can be
-        passed by prefixing the path with ``local:`` or by using the
-        :py:meth:`with_local_model` constructor.
-    index_factory
-        FAISS factory string, e.g. ``"Flat"``, ``"IVF100"``.
-    auto_link_k
-        If > 0, graph links between capsules are created automatically: for
-        every capsule we find *k* nearest neighbours and put their integer IDs
-        into the ``links`` field.  This makes simple graph traversals possible
-        without an explicit DB.
-    device
-        Target device (**cpu** | **cuda** | **mps** | **auto**).
+    This class provides a simple wrapper around FAISS for storing and querying
+    text "capsules" (text chunks with metadata) using semantic similarity.
+
+    Each capsule is a dict with at least a "text" field and optional metadata
+    such as "tags", "links", etc.
     """
- main
 
     def __init__(
         self,
@@ -190,100 +130,90 @@ TrainingStart
         auto_link_k: int = 0,
         device: str = "auto",
     ):
-        if SentenceTransformer is None:
-            raise MissingDependencyError("sentence-transformers package is required")
+        """Initialize a new capsule store.
+
+        Args:
+            model_name: Name of the sentence-transformers model to use
+            index_factory: FAISS index factory string
+            auto_link_k: Number of similar capsules to auto-link (0 to disable)
+            device: Device to use for embeddings ("auto", "cpu", "cuda", etc.)
+        """
         if faiss is None:
             raise MissingDependencyError("faiss package is required")
 
         self.device = device
-
         self.model_name = model_name
-
-        # Support *local:* prefix – used by with_local_model and rebuild_index
-        if model_name.startswith("local:"):
-            local_path = model_name[len("local:") :]
-            self.model = TransformersEmbeddings(local_path, device=device)
-        else:
-            self.model = SentenceTransformer(model_name)
-
-        self.dimension = self.model.get_sentence_embedding_dimension()
-TrainingStart
         self.index_factory = index_factory
-        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
-=======
-
-        self.index_factory = index_factory
-        # For small stores Flat index is enough and reconstruct() works.
-        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
-
-main
+        self.auto_link_k = auto_link_k
         self.meta: List[Dict[str, Any]] = []
 
-        # --- graph options -------------------------------------------------
-        self.auto_link_k = auto_link_k
+        # Initialize model based on type
+        if model_name.startswith("local:"):
+            local_path = model_name[6:]
+            self.model = TransformersEmbeddings(local_path, device=device)
+            self.dimension = self.model.get_sentence_embedding_dimension()
+        else:
+            if SentenceTransformer is None:
+                raise MissingDependencyError("sentence-transformers package is required")
+            self.model = SentenceTransformer(model_name)
+            self.dimension = self.model.get_sentence_embedding_dimension()
 
-    def add_capsules(self, capsules: List[Dict[str, Any]]):
+        # Initialize empty FAISS index
+        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+
+    def add_capsules(self, capsules: List[Dict[str, Any]]) -> None:
         """Embed and add capsules to the index, assigning IDs."""
         if not capsules:
             return
-            
-        if faiss is None:
-            raise MissingDependencyError("faiss package is required")
-            
+
         start_id = len(self.meta)
-        texts = [c.get("text", c.get("content", "")) for c in capsules]
-        
-        print(f"Encoding {len(texts)} texts...")
+        texts = [c["text"] for c in capsules]
         vectors = self.model.encode(texts, convert_to_numpy=True)
-        
-        # Normalize vectors for cosine similarity
         faiss.normalize_L2(vectors)
-TrainingStart
-        if not self.index.is_trained:
-            self.index.train(vectors)
-=======
-        
+
         # Train index if needed
-        if not self.index.is_trained:
-            print("Training index...")
+        if not self.index.is_trained and vectors.shape[0] > 0:
             self.index.train(vectors)
-        
+
         # Add vectors to index
- main
         self.index.add(vectors)
+
+        # Process metadata
         for i, cap in enumerate(capsules):
             meta = cap.copy()
-            if "content" in meta and "text" not in meta:
-                meta["text"] = meta["content"]
-            meta.setdefault("tags", [])
             meta.setdefault("links", [])
             meta["id"] = start_id + i
             self.meta.append(meta)
 
-        # ------------------------------------------------------------------
-        # Auto-linking (optional) – expensive for large collections but good
-        # enough for small test datasets.
-        # ------------------------------------------------------------------
+        # Auto-link if enabled
+        if self.auto_link_k > 0 and len(self.meta) > 1:
+            self._update_auto_links(start_id, len(capsules))
 
-        if self.auto_link_k > 0 and self.index.ntotal > 1:
-            for idx in range(len(self.meta)):
-                # Reconstruct vector for *idx* (works for Flat/IVF indices).
-                try:
-                    vec = self.index.reconstruct(idx)
-                except Exception:
-                    # fallback – re-encode (slow but safe)
-                    vec = self.model.encode([self.meta[idx]["text"]], convert_to_numpy=True)[0]
-                scores, nbrs = self.index.search(vec.reshape(1, -1), self.auto_link_k + 1)
-                neighbours = [int(n) for n in nbrs[0] if n != idx][: self.auto_link_k]
-                self.meta[idx]["links"] = neighbours
+    def _update_auto_links(self, start_idx: int, count: int) -> None:
+        """Update auto-links for new capsules."""
+        # Get vectors for new capsules
+        new_texts = [self.meta[i]["text"] for i in range(start_idx, start_idx + count)]
+        new_vectors = self.model.encode(new_texts, convert_to_numpy=True)
+        faiss.normalize_L2(new_vectors)
+
+        # For each new capsule, find similar existing capsules
+        for i, vec in enumerate(new_vectors):
+            idx = start_idx + i
+            scores, indices = self.index.search(vec.reshape(1, -1), self.auto_link_k + 1)
+            # Add links (skip self-link)
+            for j, sim_idx in enumerate(indices[0]):
+                if sim_idx != idx and sim_idx >= 0:
+                    self.meta[idx]["links"].append(int(sim_idx))
 
     def save(self, path: str):
+        """Save the index and metadata to disk."""
         faiss.write_index(self.index, path + ".index")
         with open(path + ".json", "w", encoding="utf-8") as f:
             json.dump(
                 {
                     "model": self.model_name,
                     "factory": self.index_factory,
+                    "auto_link_k": self.auto_link_k,
                     "meta": self.meta,
                 },
                 f,
@@ -292,72 +222,53 @@ TrainingStart
             )
 
     def load(self, path: str):
+        """Load the index and metadata from disk."""
         self.index = faiss.read_index(path + ".index")
         with open(path + ".json", "r", encoding="utf-8") as f:
             data = json.load(f)
             self.meta = data["meta"]
             self.model_name = data.get("model", self.model_name)
             self.index_factory = data.get("factory", "Flat")
- TrainingStart
-        self.model = SentenceTransformer(self.model_name)
-=======
+            self.auto_link_k = data.get("auto_link_k", 0)
+
+        # Re-initialize the model
+        if self.model_name.startswith("local:"):
+            local_path = self.model_name[6:]
+            self.model = TransformersEmbeddings(local_path, device=self.device)
+        else:
+            if SentenceTransformer is None:
+                raise MissingDependencyError("sentence-transformers package is required")
             self.model = SentenceTransformer(self.model_name)
- main
 
     def query(self, text: str, top_k: int = 5, tags: List[str] | None = None) -> List[Dict[str, Any]]:
         """Return top matching capsules, optionally filtering by tags."""
-        if self.index.ntotal == 0:
-            return []
-            
-        if faiss is None:
-            raise MissingDependencyError("faiss package is required")
-            
         vector = self.model.encode([text], convert_to_numpy=True)
         faiss.normalize_L2(vector)
-        
-        # Search with oversampling for tag filtering
-        search_k = min(top_k * 5, self.index.ntotal)
-        scores, indices = self.index.search(vector, search_k)
-        
-        results: List[Dict[str, Any]] = []
+        # oversample to account for tag filtering
+        scores, indices = self.index.search(vector, top_k * 5)
+        results = []
         for score, idx in zip(scores[0], indices[0]):
-            if idx == -1 or idx >= len(self.meta):
+            if idx == -1:
                 continue
-                
             meta = self.meta[idx]
-            
-            # Filter by tags if specified
             if tags and not set(tags).intersection(meta.get("tags", [])):
                 continue
-            
             cap = meta.copy()
-            # Ensure consistent field naming
-            if "text" not in cap and "content" in cap:
-                cap["text"] = cap["content"]
-            elif "content" not in cap and "text" in cap:
-                cap["content"] = cap["text"]
-            
-            cap.update({"score": float(score), "id": int(idx)})
+            cap["score"] = float(score)
+            cap["id"] = idx
             results.append(cap)
-            
             if len(results) >= top_k:
                 break
-                
         return results
 
     def remove_capsules(self, ids: List[int]) -> int:
         """Remove capsules by id, rebuilding the index."""
         if not ids:
             return 0
-            
-        if faiss is None:
-            raise MissingDependencyError("faiss package is required")
-            
         to_remove = set(ids)
-        new_meta: List[Dict[str, Any]] = []
         mapping: Dict[int, int] = {}
+        new_meta: List[Dict[str, Any]] = []
         texts: List[str] = []
-
         for old_id, meta in enumerate(self.meta):
             if old_id in to_remove:
                 continue
@@ -365,38 +276,23 @@ TrainingStart
             copy = meta.copy()
             new_meta.append(copy)
             texts.append(copy["text"])
-
-        # Update links
         for meta in new_meta:
             meta["links"] = [mapping[l] for l in meta.get("links", []) if l in mapping]
         vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
-        self.index = faiss.IndexFlatIP(self.dimension)
+        self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
         if vectors is not None and len(texts) > 0:
             faiss.normalize_L2(vectors)
             if not self.index.is_trained:
                 self.index.train(vectors)
             self.index.add(vectors)
-        
-        # Replace meta list and update IDs
+        for new_id, meta in enumerate(new_meta):
+            meta["id"] = new_id
+        removed = len(self.meta) - len(new_meta)
         self.meta = new_meta
-TrainingStart
         return removed
 
     def rebuild_index(self, model_name: str | None = None, index_factory: str | None = None) -> None:
-=======
-        for new_id, meta in enumerate(self.meta):
-            meta["id"] = new_id
-            
-        print(f"Removed {len(ids)} capsules")
-        return len(ids)
-
-    def rebuild_index(
-        self, model_name: Optional[str] = None, index_factory: Optional[str] = None
-    ) -> None:
-main
         """Recompute all embeddings and rebuild the FAISS index."""
-        if faiss is None:
-            raise MissingDependencyError("faiss package is required")
             
         if model_name and model_name != self.model_name:
             if model_name.startswith("local:"):
@@ -423,9 +319,6 @@ main
         
         for idx, meta in enumerate(self.meta):
             meta["id"] = idx
-
- TrainingStart
-=======
         # Finished rebuild_index
 
     def add_capsule(self, text: str, tags: Optional[List[str]] | None = None) -> int:
@@ -512,15 +405,6 @@ def create_store_with_best_local_model(*, device: str = "auto", auto_link_k: int
 
     return CapsuleStore.with_local_model(models[0], device=device, auto_link_k=auto_link_k)
 
-# ---------------------------------------------------------------------------
-# transformers.pipeline import (optional) – needed for compress_capsules
-# ---------------------------------------------------------------------------
-
-try:
-    from transformers import pipeline  # type: ignore
-except Exception:  # pragma: no cover – optional dependency
-    pipeline = None
- main
 
 def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> str:
     """Merge capsule texts using softmax weighting by score."""
@@ -549,40 +433,6 @@ def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> 
     
     return "\n\n".join(result_parts)
 
-TrainingStart
-    try:
-        import numpy as np
-    except Exception:  # pragma: no cover - optional dependency
-        np = None
-
-    if np is None:
-        # Fallback to simple ranking if numpy isn't available
-        sorted_caps = sorted(capsules, key=lambda c: c.get("score", 0), reverse=True)
-        texts = [c["text"] for c in sorted_caps]
-        return "\n".join(texts)
-
-    scores = np.array([c.get("score", 0.0) for c in capsules], dtype=float)
-    # Softmax weighting for smoother importance distribution
-    scores = scores / (temperature if temperature else 1.0)
-    scores = scores - scores.max()
-    exp_scores = np.exp(scores)
-    weights = exp_scores / exp_scores.sum()
-
-    # Weighted text combination
-    texts = [c["text"] for c in capsules]
-    weighted_texts = []
-    
-    for text, weight in zip(texts, weights):
-        # Simple weight-based selection
-        if weight > 0.1:  # Only include high-weight capsules
-            weighted_texts.append(text)
-    
-    return "\n".join(weighted_texts[:5])  # Limit to top 5
-
-
-def compress_capsules(capsules: List[Dict[str, Any]], model_name: str = "sshleifer/distilbart-cnn-12-6") -> str:
-    """Compress multiple capsules into a summary using a summarization model."""
-=======
 
 def compress_capsules(
     capsules: List[Dict[str, Any]],
@@ -597,27 +447,27 @@ def compress_capsules(
     an ellipsis in-between.  This guarantees that the function always returns
     *something useful* without adding a hard dependency.
     """
- main
     if not capsules:
         return ""
+    
+    # Combine all texts
+    texts = [c.get("text", "") for c in capsules]
+    combined = " ".join(texts)
     
     try:
         if pipeline is None:
             raise MissingDependencyError("transformers package is required for compression")
         
-        # Combine all capsule texts
-        combined_text = " ".join([c["text"] for c in capsules])
-        
-        # Limit input length to avoid model constraints
-        if len(combined_text) > 1000:
-            combined_text = combined_text[:1000]
-        
         # Use summarization pipeline
         summarizer = pipeline("summarization", model=model_name)
-        summary = summarizer(combined_text, max_length=100, min_length=20, do_sample=False)
+        summary = summarizer(combined, max_length=150, min_length=30, do_sample=False)
         
-        return summary[0]["summary_text"] if summary else combined_text
-        
+        if summary and summary[0]["summary_text"]:
+            return summary[0]["summary_text"]
     except Exception:
-        # Fallback to simple text merging
-        return merge_capsules(capsules) 
+        pass  # Fall back to simple truncation
+    
+    # Simple fallback: truncate with ellipsis
+    if len(combined) > 300:
+        return combined[:150] + "..." + combined[-150:]
+    return combined 
