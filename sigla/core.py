@@ -238,6 +238,15 @@ class CapsuleStore:
             for j, sim_idx in enumerate(indices[0]):
                 if sim_idx != idx and sim_idx >= 0:
                     self.meta[idx]["links"].append(int(sim_idx))
+                    # Store similarity score as weight
+                    w_list = self.meta[idx].setdefault("weights", [])
+                    w_list.append(float(scores[0][j]))
+                    # add reciprocal link
+                    back_links = self.meta[sim_idx].setdefault("links", [])
+                    back_weights = self.meta[sim_idx].setdefault("weights", [])
+                    if idx not in back_links:
+                        back_links.append(idx)
+                        back_weights.append(float(scores[0][j]))
 
     def save(self, path: str):
         """Save the index and metadata to disk."""

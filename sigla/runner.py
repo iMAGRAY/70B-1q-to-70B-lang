@@ -13,7 +13,7 @@ import os
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List, Any
 
 try:
     import torch
@@ -34,7 +34,7 @@ from .core import CapsuleStore, MissingDependencyError
 def load_capsulegraph(
     archive_path: str | Path,
     device: str = "cpu",
-) -> Tuple["torch.nn.Module", "transformers.PreTrainedTokenizer", CapsuleStore]:
+) -> Tuple[Any, Any, CapsuleStore]:
     """Return quantised model, tokenizer and token CapsuleStore.
 
     Parameters
@@ -103,6 +103,49 @@ def load_capsulegraph(
 
 
 # ---------------------------------------------------------------------------
+# Generation helpers
+# ---------------------------------------------------------------------------
+
+def generate_with_prefix(
+    model: Any,
+    tokenizer,
+    prompt: str,
+    prefix_tokens: Optional[List[int]] = None,
+    *,
+    max_tokens: int = 128,
+    temperature: float = 0.9,
+    device: str = "cpu",
+) -> str:
+    """Generate text optionally seeding KV-cache with *prefix_tokens*.
+
+    Implementation strategy:  simply concatenate the prefix token IDs with
+    the prompt token IDs – while this is not *true* KV-cache injection, the
+    effect on autoregressive models is equivalent and universally supported
+    by HF generate().
+    """
+
+    import torch
+
+    # Encode prompt to ids (without special tokens)
+    prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
+
+    if prefix_tokens:
+        input_ids = torch.tensor([prefix_tokens + prompt_ids], device=device)
+    else:
+        input_ids = torch.tensor([prompt_ids], device=device)
+
+    with torch.no_grad():
+        output = model.generate(
+            input_ids,
+            max_new_tokens=max_tokens,
+            do_sample=True,
+            temperature=temperature,
+        )
+
+    return tokenizer.decode(output[0], skip_special_tokens=True)
+
+
+# ---------------------------------------------------------------------------
 # Simple CLI
 # ---------------------------------------------------------------------------
 
@@ -112,22 +155,35 @@ def _cli():  # noqa: D401
     parser.add_argument("--prompt", help="Prompt to generate", default="Hello, world!")
     parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default="cpu")
     parser.add_argument("--max-tokens", type=int, default=128)
+    parser.add_argument("--prefix", help="JSON list of token IDs or comma-separated ints", default="")
+    parser.add_argument("--temperature", type=float, default=0.9)
     args = parser.parse_args()
 
     model, tok, _ = load_capsulegraph(args.archive, device=args.device)
 
-    print("[runner] Generating…")
-    import torch
+    # Parse prefix tokens if any
+    prefix_tokens: Optional[List[int]] = None
+    if args.prefix:
+        import json
+        try:
+            if args.prefix.strip().startswith("["):
+                prefix_tokens = json.loads(args.prefix)
+            else:
+                prefix_tokens = [int(x) for x in args.prefix.split(",") if x.strip()]
+        except Exception as e:
+            print(f"[runner] Failed to parse prefix tokens: {e}")
+            return
 
-    input_ids = tok(args.prompt, return_tensors="pt").to(args.device)
-    with torch.no_grad():
-        output = model.generate(
-            **input_ids,
-            max_new_tokens=args.max_tokens,
-            do_sample=True,
-            temperature=0.9,
-        )
-    text = tok.decode(output[0], skip_special_tokens=True)
+    print("[runner] Generating…")
+    text = generate_with_prefix(
+        model,
+        tok,
+        args.prompt,
+        prefix_tokens=prefix_tokens,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        device=args.device,
+    )
     print("=== Generated ===\n", text)
 
 

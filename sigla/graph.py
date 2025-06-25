@@ -11,6 +11,7 @@ def expand_with_links(
     store: CapsuleStore,
     depth: int = 1,
     limit: int = 10,
+    weight_threshold: float = 0.0,
 ) -> List[dict]:
     """Breadth-first расширение капсул по их полю ``links``.
 
@@ -25,7 +26,11 @@ def expand_with_links(
         new_queue: List[int] = []
         for cid in queue:
             meta = store.meta[cid]
-            for link in meta.get("links", []):
+            links = meta.get("links", [])
+            weights = meta.get("weights", [1.0] * len(links))
+            for link, w in zip(links, weights):
+                if w < weight_threshold:
+                    continue
                 if (
                     link in visited
                     or link < 0
@@ -64,9 +69,24 @@ def random_walk_links(
     for _ in range(steps):
         next_nodes: List[int] = []
         for cid in current:
-            links = store.meta[cid].get("links", [])
+            meta = store.meta[cid]
+            links = meta.get("links", [])
+            weights = meta.get("weights", [1.0] * len(links))
             if links and random.random() > restart:
-                next_nodes.append(random.choice(links))
+                # weighted choice by weight
+                total_w = sum(weights)
+                if total_w == 0:
+                    choice = random.choice(links)
+                else:
+                    r = random.uniform(0, total_w)
+                    acc = 0.0
+                    choice = links[0]
+                    for l, w in zip(links, weights):
+                        acc += w
+                        if r <= acc:
+                            choice = l
+                            break
+                next_nodes.append(choice)
             else:
                 next_nodes.append(random.choice(start))
         current = next_nodes

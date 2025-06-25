@@ -12,9 +12,11 @@ from .core import (
     CapsuleStore, 
     get_available_local_models, 
     create_store_with_best_local_model,
-    MissingDependencyError
+    MissingDependencyError,
+    compress_capsules,
 )
 from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
+from .abtest import run_ab_test
 
 # logging helper
 from . import log as siglog
@@ -297,6 +299,182 @@ def cmd_module(args) -> None:
         print("Unknown module action")
 
 
+def cmd_list(args) -> None:
+    """List stored capsules."""
+    if not os.path.exists(f"{args.store}.json"):
+        print(f"Error: Store not found: {args.store}")
+        sys.exit(1)
+
+    store = CapsuleStore()
+    store.load(args.store)
+
+    tag_filter = set(args.tags or [])
+    count = 0
+    for meta in store.meta:
+        if tag_filter and not tag_filter.intersection(meta.get("tags", [])):
+            continue
+        print(f"[{meta['id']}] {meta.get('tags', [])} -> {meta.get('text', '')[:120]}…")
+        count += 1
+        if args.limit and count >= args.limit:
+            break
+    if count == 0:
+        print("No capsules match the criteria")
+
+
+def cmd_capsule(args) -> None:
+    """Display a single capsule by id."""
+    if not os.path.exists(f"{args.store}.json"):
+        print(f"Error: Store not found: {args.store}")
+        sys.exit(1)
+    store = CapsuleStore()
+    store.load(args.store)
+    if args.id < 0 or args.id >= len(store.meta):
+        print("Capsule id out of range")
+        sys.exit(1)
+    meta = store.meta[args.id]
+    print(json.dumps(meta, ensure_ascii=False, indent=2))
+
+
+def cmd_compress(args) -> None:
+    """Summarize top-k capsules using an LLM summarizer."""
+    if not os.path.exists(f"{args.store}.json"):
+        print(f"Error: Store not found: {args.store}")
+        sys.exit(1)
+    store = CapsuleStore()
+    store.load(args.store)
+    results = store.query(args.query, top_k=args.top_k, tags=args.tags)
+    if not results:
+        print("Nothing found to compress")
+        return
+    summary = compress_capsules(results, model_name=args.model)
+    print(summary)
+
+
+def cmd_prune(args) -> None:
+    """Remove capsules by id list or tag filter."""
+    ids = [int(x) for x in args.ids.split(',')] if args.ids else None
+    prune_capsules(args.store, ids=ids, tags=args.tags)
+
+
+def cmd_reindex(args) -> None:
+    """Rebuild embeddings for the store."""
+    reindex_store(args.store, model=args.model, factory=args.factory)
+
+
+def cmd_abtest(args) -> None:
+    """Run A/B evaluation on a dataset JSON file."""
+    import json
+    from pathlib import Path
+
+    path = Path(args.dataset)
+    if not path.exists():
+        print(f"Dataset not found: {path}")
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"Failed to load dataset: {e}")
+        return
+    if not isinstance(data, list):
+        print("Dataset must be a list of objects with 'question' and 'answer'")
+        return
+
+    store = CapsuleStore()
+    try:
+        store.load(args.store)
+    except FileNotFoundError:
+        print(f"Store '{args.store}' not found")
+        return
+    except MissingDependencyError as e:
+        print(f"Error: {e}")
+        return
+
+    summary = run_ab_test(
+        store,
+        data,
+        top_k=args.top_k,
+        temperature=args.temperature,
+        baseline=args.baseline,
+    )
+
+    print("A/B test summary (average)")
+    for side in ("sigla", "baseline"):
+        print(f"  {side}:")
+        for k, v in sorted(summary[side].items()):
+            print(f"    {k:8}: {v:.3f}")
+
+
+def _run_repl(store: "CapsuleStore", top_k: int = 5, tags: list[str] | None = None) -> None:
+    """Very small interactive REPL for quick manual testing."""
+    try:
+        from prompt_toolkit import prompt  # type: ignore
+    except ImportError:
+        prompt = input  # fallback
+
+    print("Entering SIGLA shell. Type :q or :exit to quit.")
+    while True:
+        try:
+            query = prompt("SIGLA> ")  # type: ignore
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if query.strip() in {":q", ":exit"}:
+            break
+        if not query.strip():
+            continue
+        results = store.query(query, top_k=top_k, tags=tags)
+        if not results:
+            print("No results")
+            continue
+        for i, res in enumerate(results, 1):
+            print(f"[{i}] (score {res['score']:.3f}) {res['text'][:120]}…")
+
+
+def cmd_shell(args) -> None:
+    """Run interactive shell on a capsule store."""
+    if os.path.exists(f"{args.store}.json"):
+        store = CapsuleStore()
+        store.load(args.store)
+    else:
+        if args.auto_model:
+            store = create_store_with_best_local_model(device=args.device)
+        else:
+            store = CapsuleStore(device=args.device)
+            # Empty store; warn user
+            print("Warning: created empty store – queries will return nothing until you ingest data.")
+    _run_repl(store, top_k=args.top_k, tags=args.tags)
+
+
+def cmd_stats(args) -> None:
+    """Generate simple statistics from a JSONL log produced by sigla.log."""
+    if not os.path.isfile(args.log):
+        print(f"Log file not found: {args.log}")
+        return
+    counts: dict[str, int] = {}
+    queries: dict[str, int] = {}
+    with open(args.log, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            etype = ev.get("type", "unknown")
+            counts[etype] = counts.get(etype, 0) + 1
+            if etype in {"search", "ask"}:
+                q = ev.get("query", "")
+                if q:
+                    queries[q] = queries.get(q, 0) + 1
+
+    print("Event counts:")
+    for t, c in sorted(counts.items(), key=lambda x: -x[1]):
+        print(f"  {t:10}: {c}")
+
+    if queries:
+        print("\nTop queries:")
+        for q, n in sorted(queries.items(), key=lambda x: -x[1])[:10]:
+            print(f"  {n:4} × {q}")
+
+
 # -----------------------------------------------------------------------------
 # Clean CLI entry (rewritten – fixes previous merge conflicts)
 # -----------------------------------------------------------------------------
@@ -381,6 +559,65 @@ def main() -> None:  # noqa: D401
     module_list = module_sub.add_parser("list", help="List modules")
     
     module_parser.set_defaults(func=cmd_module)
+
+    # ----------------------------------------------------------------- list
+    list_caps_parser = subparsers.add_parser("list", help="List capsules")
+    list_caps_parser.add_argument("--store", "-s", default="capsules")
+    list_caps_parser.add_argument("--limit", "-n", type=int, default=20)
+    list_caps_parser.add_argument("--tags", nargs="*")
+    list_caps_parser.set_defaults(func=cmd_list)
+
+    # --------------------------------------------------------------- capsule
+    cap_parser = subparsers.add_parser("capsule", help="Show capsule by id")
+    cap_parser.add_argument("id", type=int)
+    cap_parser.add_argument("--store", "-s", default="capsules")
+    cap_parser.set_defaults(func=cmd_capsule)
+
+    # -------------------------------------------------------------- compress
+    comp_parser = subparsers.add_parser("compress", help="Summarize retrieved capsules")
+    comp_parser.add_argument("query")
+    comp_parser.add_argument("--store", "-s", default="capsules")
+    comp_parser.add_argument("--top-k", "-k", type=int, default=5)
+    comp_parser.add_argument("--tags", nargs="*")
+    comp_parser.add_argument("--model", default="sshleifer/distilbart-cnn-12-6")
+    comp_parser.set_defaults(func=cmd_compress)
+
+    # ---------------------------------------------------------------- prune
+    prune_parser = subparsers.add_parser("prune", help="Remove capsules by id or tag")
+    prune_parser.add_argument("--store", "-s", default="capsules")
+    prune_parser.add_argument("--ids", help="Comma-separated list of ids to remove")
+    prune_parser.add_argument("--tags", nargs="*", help="Tags filter")
+    prune_parser.set_defaults(func=cmd_prune)
+
+    # -------------------------------------------------------------- reindex
+    reidx_parser = subparsers.add_parser("reindex", help="Rebuild embeddings/index")
+    reidx_parser.add_argument("--store", "-s", default="capsules")
+    reidx_parser.add_argument("--model", help="New embedding model")
+    reidx_parser.add_argument("--factory", help="FAISS index factory string")
+    reidx_parser.set_defaults(func=cmd_reindex)
+
+    # ------------------------------------------------------------------ shell
+    shell_parser = subparsers.add_parser("shell", help="Interactive shell for quick tests")
+    shell_parser.add_argument("--store", "-s", default="capsules")
+    shell_parser.add_argument("--top-k", "-k", type=int, default=5)
+    shell_parser.add_argument("--tags", nargs="*")
+    shell_parser.add_argument("--auto-model", action="store_true", help="Pick best local model if store missing")
+    shell_parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
+    shell_parser.set_defaults(func=cmd_shell)
+
+    # ------------------------------------------------------------------ stats
+    stats_parser = subparsers.add_parser("stats", help="Show statistics for a SIGLA JSONL log")
+    stats_parser.add_argument("log", help="Path to JSONL log file")
+    stats_parser.set_defaults(func=cmd_stats)
+
+    # ----------------------------------------------------------------- abtest
+    ab_parser = subparsers.add_parser("abtest", help="Run A/B evaluation")
+    ab_parser.add_argument("dataset", help="JSON file with questions & answers")
+    ab_parser.add_argument("--store", "-s", default="capsules")
+    ab_parser.add_argument("--top-k", "-k", type=int, default=5)
+    ab_parser.add_argument("--temperature", "-t", type=float, default=1.0)
+    ab_parser.add_argument("--baseline", choices=["echo", "none"], default="echo")
+    ab_parser.set_defaults(func=cmd_abtest)
 
     args = parser.parse_args()
 
