@@ -1,59 +1,117 @@
+from __future__ import annotations
+
 try:
+TrainingStart
     from fastapi import FastAPI, HTTPException
     FASTAPI_AVAILABLE = True
 except Exception:  # pragma: no cover - optional dependency
     FastAPI = None
     HTTPException = None
     FASTAPI_AVAILABLE = False
+=======
+    from fastapi import FastAPI, HTTPException, Depends
+except Exception:  # pragma: no cover - optional dependency
+    FastAPI = None
+    class HTTPException(Exception):
+        def __init__(self, *args, **kwargs):  # noqa: D401,E501
+            super().__init__(*args)
+    def Depends(*args, **kwargs):
+        return lambda: True
+ main
 
-from typing import List
+from typing import List, Optional
 import argparse
 import os
-from . import log as siglog
 
+ TrainingStart
 from .core import CapsuleStore, merge_capsules, compress_capsules, MissingDependencyError
 from .graph import expand_with_links, random_walk_links
+=======
+from . import log as siglog
+from .core import (
+    CapsuleStore,
+    merge_capsules,
+    compress_capsules,
+    MissingDependencyError,
+)
+from .graph import expand_with_links, random_walk_links
+
+# ---------------------------------------------------------------------------
+# Auth helper
+# ---------------------------------------------------------------------------
+
+def _require_api_key():
+    """Простая заглушка для аутентификации."""
+    return True
+
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+main
 
 if FastAPI:
     app = FastAPI(title="SIGLA Server")
 else:
-    app = None
+    app = None  # type: ignore
 
 store: CapsuleStore | None = None
 index_path: str = ""
 
 if app:
+
     @app.on_event("startup")
-    def _load_store():
+    def _load_store() -> None:
+        """Загружаем/создаём CapsuleStore при старте API."""
         global store
         if not index_path:
             raise RuntimeError("Index path not set")
-        s = CapsuleStore()
+        local_store = CapsuleStore()
         if os.path.exists(index_path + ".index"):
-            s.load(index_path)
-        store = s
+            local_store.load(index_path)
+            store = local_store
 
     @app.get("/search")
     def search(query: str, top_k: int = 5, tags: str | None = None):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
+        tag_list = tags.split(",") if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
-        siglog.log({"type": "search", "query": query, "top_k": top_k, "tags": tag_list, "results": results})
+        siglog.log(
+            {
+                "type": "search",
+                "query": query,
+                "top_k": top_k,
+                "tags": tag_list,
+                "results": results,
+            }
+        )
         return results
 
     @app.get("/ask")
     def ask(query: str, top_k: int = 5, tags: str | None = None, temperature: float = 1.0):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
+        tag_list = tags.split(",") if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
         merged = merge_capsules(results, temperature=temperature)
+TrainingStart
         siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "temperature": temperature, "context": merged})
+=======
+        siglog.log(
+            {
+                "type": "ask",
+                "query": query,
+                "top_k": top_k,
+                "tags": tag_list,
+                "temperature": temperature,
+                "context": merged,
+            }
+        )
+main
         return {"context": merged}
 
     @app.get("/capsule/{idx}")
-    def get_capsule(idx: int):
+    def get_capsule(idx: int, _auth: bool = Depends(_require_api_key)):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         if idx < 0 or idx >= len(store.meta):
@@ -61,7 +119,7 @@ if app:
         return store.meta[idx]
 
     @app.post("/update")
-    def update_capsules(capsules: List[dict]):
+    def update_capsules(capsules: List[dict], _auth: bool = Depends(_require_api_key)):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         store.add_capsules(capsules)
@@ -89,11 +147,11 @@ if app:
         return data
 
     @app.get("/list")
-    def list_capsules(limit: int = 20, tags: str | None = None):
+    def list_capsules(limit: int = 20, tags: str | None = None, _auth: bool = Depends(_require_api_key)):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
-        results = []
+        tag_list = tags.split(",") if tags else None
+        results: List[dict] = []
         for meta in store.meta:
             if tag_list and not set(tag_list).intersection(meta.get("tags", [])):
                 continue
@@ -111,11 +169,11 @@ if app:
         tags: str | None = None,
         algo: str = "bfs",
         restart: float = 0.5,
+        _auth: bool = Depends(_require_api_key),
     ):
-        """Expand results via capsule links."""
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
+        tag_list = tags.split(",") if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
         if algo == "random":
             expanded = random_walk_links(
@@ -143,11 +201,11 @@ if app:
         top_k: int = 5,
         tags: str | None = None,
         model: str = "sshleifer/distilbart-cnn-12-6",
+        _auth: bool = Depends(_require_api_key),
     ):
-        """Return a summary of retrieved capsules."""
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-        tag_list = tags.split(',') if tags else None
+        tag_list = tags.split(",") if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
         try:
             summary = compress_capsules(results, model_name=model)
@@ -170,7 +228,7 @@ if app:
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         id_list = [int(x) for x in ids.split(",") if x] if ids else []
-        tag_list = tags.split(',') if tags else None
+        tag_list = tags.split(",") if tags else None
         remove_set = set(id_list)
         if tag_list:
             for i, meta in enumerate(store.meta):
@@ -181,7 +239,14 @@ if app:
         removed = store.remove_capsules(sorted(remove_set))
         if index_path:
             store.save(index_path)
-        siglog.log({"type": "prune", "removed": removed, "ids": sorted(remove_set), "tags": tag_list})
+        siglog.log(
+            {
+                "type": "prune",
+                "removed": removed,
+                "ids": sorted(remove_set),
+                "tags": tag_list,
+            }
+        )
         return {"removed": removed}
 
     @app.post("/reindex")
@@ -195,17 +260,33 @@ if app:
             raise HTTPException(status_code=500, detail=str(e))
         if index_path:
             store.save(index_path)
-        siglog.log({"type": "reindex", "model": model or store.model_name, "factory": factory or store.index_factory})
+        siglog.log(
+            {
+                "type": "reindex",
+                "model": model or store.model_name,
+                "factory": factory or store.index_factory,
+            }
+        )
         return {"model": store.model_name, "factory": store.index_factory}
 
+ TrainingStart
 
 def cli():
+=======
+# ---------------------------------------------------------------------------
+# CLI wrapper (uvicorn)
+# ---------------------------------------------------------------------------
+
+def cli() -> None:
+    """Запускает FastAPI-сервер через uvicorn."""
+ main
     parser = argparse.ArgumentParser(description="Run SIGLA API server")
     parser.add_argument("index_path", help="Path prefix of the FAISS index")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--log-file")
     args = parser.parse_args()
+
     global index_path
     index_path = args.index_path
     if args.log_file:
@@ -218,7 +299,8 @@ def cli():
     except Exception:
         parser.error("uvicorn is required to run the server")
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port)  # type: ignore
+
 
 if __name__ == "__main__":
     cli()
