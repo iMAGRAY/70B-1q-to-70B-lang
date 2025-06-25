@@ -1,305 +1,233 @@
-# 70B-1q-to-70B-lang
+# SIGLA - Semantic Information Graph with Language Agents
 
-This project experiments with **SIGLA**, a small-scale reasoning layer between a
-lightweight model (**1Q**) and a larger language model (**70B**). 70B answers ar
-e distilled into compact *capsules* and indexed using FAISS. At runtime, SIGLA r
-etrieves relevant capsules and injects them into the 1Q model.
+A lightweight FAISS-backed capsule database with local model support for semantic search and knowledge management.
 
+## Features
 
-Current version: 0.1.2. Основной функционал завершён; дальнейшая работа будет сосредоточена на интеграции с ИИ-моделями.
+- **Local Model Support**: Use your own Transformers models for embeddings
+- **FAISS Integration**: Efficient vector similarity search
+- **Flexible Storage**: JSON metadata with binary index files
+- **CLI Interface**: Easy command-line tools for ingestion and search
+- **Web API**: FastAPI-based REST interface
+- **DSL Functions**: High-level semantic operations (INTENT, RETRIEVE, MERGE, etc.)
+- **Graph Operations**: Link-based capsule expansion and random walks
 
-## Installation
+## Quick Start
 
-Run `pip install faiss-cpu sentence-transformers fastapi uvicorn transformers` to install optional dependencies.
+### Installation
 
-## Usage
-
-1. Prepare a JSON file with capsules of the following form:
-
-```json
-[
-  {"text": "Стоики считали, что разум управляет эмоциями."},
-  {"text": "Эпикур видел счастье в отсутствии страданий."}
-]
+```bash
+pip install -r requirements.txt
 ```
 
-szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-2. Build an index:
+### Using Local Models
+
+SIGLA automatically detects and uses local models in your directory:
 
 ```bash
-python -m sigla.scripts ingest capsules.json myindex
-=======
-main
-2. Build an index (you can choose a FAISS index type with `--factory`):
+# Auto-detect and use the best local model
+python -m sigla ingest documents/ --auto-model
 
-```bash
-python -m sigla.scripts ingest capsules.json myindex --factory HNSW32  # default is Flat
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-main
-main
+# Use a specific local model
+python -m sigla ingest documents/ --local-model ./Qodo-Embed-1-7B
+
+# Use sentence-transformers model (default)
+python -m sigla ingest documents/ --model sentence-transformers/all-MiniLM-L6-v2
 ```
 
-Each capsule is assigned a numeric `id` so you can retrieve it later via the API.
+### Available Local Models
 
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-3. Append new capsules to the same index later:
+List available local models in your directory:
 
 ```bash
-python -m sigla.scripts update more_caps.json myindex
+python -m sigla list-models
 ```
 
-Use this to grow the knowledge base without rebuilding the index.
-
-4. Search for relevant capsules (you can filter by tags):
-=======
-3. Search for relevant capsules (you can filter by tags):
-main
+### Basic Usage
 
 ```bash
-python -m sigla.scripts search myindex "философия и счастье" --tags философия
+# Ingest documents
+python -m sigla ingest documents/ -o my_store
+
+# Search
+python -m sigla search "your query" -s my_store -k 5
+
+# Get store information
+python -m sigla info -s my_store
+
+# Start web server
+python -m sigla serve -s my_store -p 8000
 ```
 
-You can record queries by adding `--log-file logfile.jsonl`.
-
-The resulting text can be injected into your model prompt or cached at a lower level. Use `--tags` with comma-separated values to restrict results.
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-5. Perform graph-based retrieval (if capsules include `links`):
-
-```bash
-=======
-4. Perform graph-based retrieval (if capsules include `links`):
-
-```bash
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-python -m sigla.scripts walk myindex "философия" --depth 2 --limit 8 --tags философия
-```
-
-This expands results by following capsule links.
-=======
-main
-python -m sigla.scripts walk myindex "философия" --depth 2 --limit 8 --algo random --tags философия
-```
-
-Use `--algo bfs` (default) to simply follow links breadth-first or `--algo random` with `--restart` to explore the graph via a random walk.
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-6. Generate a prompt snippet directly:
-
-```bash
-python -m sigla.scripts inject myindex "философия и счастье" --top_k 3 --tags философия --temperature 0.7
-```
-
-This prints the `[Контекст]` block ready to prepend to 1Q. Adjust `--temperature`
-to tune how strongly the best capsules dominate the merge.
-
-7. Generate a compressed summary of top capsules:
-=======
-main
-5. Generate a prompt snippet directly:
-
-```bash
-python -m sigla.scripts inject myindex "философия и счастье" --top_k 3 --tags философия
-```
-
-This prints the `[Контекст]` block ready to prepend to 1Q.
-
-6. Generate a compressed summary of top capsules:
-main
-
-```bash
-python -m sigla.scripts compress myindex "философия и счастье" --top_k 3 --tags философия
-```
-
-This attempts to summarize the retrieved capsules using a local summarization model.
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-8. Run the API server:
-=======
-7. Run the API server:
-main
-
-```bash
-python -m sigla.server myindex
-```
-
-Now you can query it (including optional tags):
-
-```bash
-curl "http://localhost:8000/search?query=философия&tags=философия"
-```
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-Or request a ready-to-inject context snippet:
-
-```bash
-curl "http://localhost:8000/ask?query=философия&temperature=0.7"
-```
-
-=======
-main
-You can add more capsules on the fly by posting to `/update`:
-
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  -d '[{"text": "Новая мысль"}]' \
-  http://localhost:8000/update
-```
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-Check the current index summary:
-
-```bash
-curl http://localhost:8000/info
-```
-
-List stored capsules (limit the number and filter by tags):
-
-```bash
-curl "http://localhost:8000/list?limit=5&tags=философия"
-```
-
-Walk linked capsules via the API:
-
-```bash
-curl "http://localhost:8000/walk?query=философия&depth=2&limit=8"
-```
-
-Summarize top capsules:
-
-```bash
-curl "http://localhost:8000/compress?query=философия&top_k=3"
-```
-
-Remove capsules via the API:
-
-```bash
-curl -X POST "http://localhost:8000/prune?ids=0,1&tags=философия"
-```
-
-Rebuild embeddings through the server:
-
-```bash
-curl -X POST "http://localhost:8000/reindex?model=sentence-transformers/all-MiniLM-L6-v2&factory=HNSW32"
-```
-
-=======
-main
-Both the CLI and server accept a `--log-file` option to record queries and
-updates in JSONL format. This is useful for building a memory of interactions:
-
-```bash
-python -m sigla.server myindex --log-file sigla.log
-```
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-9. Start an interactive shell:
-
-```bash
-python -m sigla.scripts shell myindex --top_k 3 --tags философия --temperature 0.7
-=======
-8. Start an interactive shell:
-
-```bash
-python -m sigla.scripts shell myindex --top_k 3 --tags философия
-main
-```
-
-Type queries one per line; an empty line exits.
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-10. Show a stored capsule by its id:
-=======
-9. Show a stored capsule by its id:
-main
-
-```bash
-python -m sigla.scripts capsule myindex 0
-```
-
-This prints the capsule's text and metadata in JSON form.
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-11. List stored capsules (optionally filter by tags):
-=======
-10. List stored capsules (optionally filter by tags):
-main
-
-```bash
-python -m sigla.scripts list myindex --limit 5 --tags философия
-```
-
- 3szrfh-codex/разработать-sigla-для-моделирования-мышления
-12. Summarize a log file to see how commands are used:
-=======
-11. Summarize a log file to see how commands are used:
-main
-
-```bash
-python -m sigla.scripts stats sigla.log
-```
-
-This prints a JSON object with counts for each logged event type.
-
-<3szrfh-codex/разработать-sigla-для-моделирования-мышления
-13. Inspect index information:
-=======
-12. Inspect index information:
-main
-```bash
-python -m sigla.scripts info myindex
-```
-
-This lists the embedding model, dimension, capsule count and tag distribution.
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-14. Prune capsules by id or tags:
-=======
-13. Prune capsules by id or tags:
-ain
-
-```bash
-python -m sigla.scripts prune myindex --ids 0,1 --tags philosophy
-```
-
-This removes matching capsules and rebuilds the index.
-
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-15. Rebuild embeddings with a new model or index type:
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-=======
-14. Rebuild embeddings with a new model or index type:
-main
-
-```bash
-python -m sigla.scripts reindex myindex --model sentence-transformers/all-MiniLM-L6-v2 --factory HNSW32  # optional
-```
-
-This recomputes all capsule vectors and updates the FAISS index.
-
-szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-main
-main
-### Using the SIGLA mini-language
-
-`sigla.dsl` exposes helpers following the plan's INTENT → RETRIEVE → MERGE → INJECT pipeline. When capsules contain links, you can also `EXPAND` them. Example:
+## Python API
 
 ```python
-from sigla import CapsuleStore, INTENT, RETRIEVE, MERGE, INJECT, EXPAND
+from sigla import CapsuleStore, create_store_with_best_local_model
 
-store = CapsuleStore()
-store.load("myindex")
-vec = INTENT(store, "философия и счастье")
-caps = RETRIEVE(store, vec, top_k=3)
-caps = EXPAND(caps, store, depth=1)
-snippet = INJECT(MERGE(caps))
-print(snippet)
+# Create store with best available local model
+store = create_store_with_best_local_model()
+
+# Or use a specific local model
+store = CapsuleStore.with_local_model("./Qodo-Embed-1-7B")
+
+# Or use sentence-transformers
+store = CapsuleStore(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+# Add documents
+capsules = [
+    {"text": "Machine learning is a subset of AI", "tags": ["ml", "ai"]},
+    {"text": "Deep learning uses neural networks", "tags": ["dl", "neural"]},
+]
+store.add_capsules(capsules)
+
+# Search
+results = store.query("neural networks", top_k=3)
+for result in results:
+    print(f"Score: {result['score']:.3f}")
+    print(f"Text: {result['text']}")
+    print(f"Tags: {result.get('tags', [])}")
 ```
-This produces a prompt fragment ready to prepend to your 1Q model.
 
-# or use an existing index to reuse its embedding model
-python -m sigla embed "другой текст" --index myindex
+## DSL Functions
+
+```python
+from sigla import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
+
+# Extract intent
+intent = INTENT("I want to learn about machine learning")
+
+# Retrieve relevant capsules
+results = RETRIEVE("machine learning", store, top_k=5)
+
+# Merge multiple capsules
+merged_text = MERGE(results, temperature=1.0)
+
+# Inject new capsule
+capsule_id = INJECT("New information about AI", store)
+
+# Expand with related capsules
+expanded = EXPAND(results[0], store, depth=2)
+```
+
+## Local Model Setup
+
+### Supported Model Formats
+
+SIGLA supports any Transformers-compatible model with the following structure:
+
+```
+model_directory/
+├── config.json
+├── pytorch_model.bin (or model.safetensors)
+├── tokenizer.json
+└── tokenizer_config.json
+```
+
+### Example Models
+
+1. **ms-marco-MiniLM-L6-v2**: Compact, fast model for general use
+2. **Qodo-Embed-1-7B**: Large, high-quality model for better results
+
+### Device Support
+
+```bash
+# Auto-detect best device (CUDA > MPS > CPU)
+python -m sigla ingest docs/ --device auto
+
+# Force specific device
+python -m sigla ingest docs/ --device cuda
+python -m sigla ingest docs/ --device cpu
+```
+
+## Web API
+
+Start the web server:
+
+```bash
+python -m sigla serve -s my_store -p 8000
+```
+
+API endpoints:
+
+- `GET /`: Server info and store statistics
+- `POST /search`: Search capsules with JSON body `{"query": "text", "top_k": 5}`
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8000/search" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "machine learning", "top_k": 3}'
+```
+
+## Advanced Features
+
+### Graph Operations
+
+```python
+from sigla.graph import expand_with_links, random_walk_links
+
+# Expand capsules via their links
+expanded = expand_with_links(results, store, depth=2, limit=20)
+
+# Random walk through the graph
+walked = random_walk_links(results, store, steps=5, restart=0.3)
+```
+
+### Custom Index Types
+
+```python
+# Use different FAISS index types
+store = CapsuleStore(
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    index_factory="IVF100,Flat"  # Faster search for large datasets
+)
+```
+
+### Batch Operations
+
+```python
+# Add many capsules efficiently
+large_capsule_list = [{"text": f"Document {i}"} for i in range(10000)]
+store.add_capsules(large_capsule_list)
+
+# Remove capsules by ID
+store.remove_capsules([1, 3, 5])
+
+# Rebuild index with new model
+store.rebuild_index(model_name="local:./better_model")
+```
+
+## Performance Tips
+
+1. **Use Local Models**: Local models avoid network overhead and provide consistent performance
+2. **Choose Right Model Size**: Balance between quality (larger models) and speed (smaller models)  
+3. **Batch Operations**: Add multiple capsules at once for better performance
+4. **Index Types**: Use IVF indexes for large datasets (>10k capsules)
+5. **Device Selection**: Use CUDA/MPS when available for faster encoding
+
+## File Structure
+
+```
+my_store.index    # FAISS binary index
+my_store.json     # Metadata and configuration
+```
+
+## Dependencies
+
+### Core (required)
+- `numpy>=1.21.0`
+- `faiss-cpu>=1.7.0` 
+- `sentence-transformers>=2.2.0`
+
+### Local Models (recommended)
+- `torch>=1.9.0`
+- `transformers>=4.20.0`
+
+### Web Server (optional)
+- `fastapi>=0.68.0`
+- `uvicorn>=0.15.0`
+
+## License
+
+MIT License - see LICENSE file for details.

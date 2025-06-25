@@ -1,47 +1,49 @@
 from __future__ import annotations
 
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-from typing import List, Dict
+from typing import Dict, List
 import random
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-from typing import List
-=======
-from typing import List, Dict
-import random
-main
-main
 
 from .core import CapsuleStore
 
 
-def expand_with_links(capsules: List[dict], store: CapsuleStore, depth: int = 1, limit: int = 10) -> List[dict]:
-    """Expand capsules by following their 'links' metadata."""
+def expand_with_links(
+    capsules: List[dict],
+    store: CapsuleStore,
+    depth: int = 1,
+    limit: int = 10,
+) -> List[dict]:
+    """Breadth-first расширение капсул по их полю ``links``.
+
+    - ``depth`` – сколько «слоёв» ссылок пройти.
+    - ``limit`` – максимальное количество капсул в результате.
+    """
     visited = {c["id"] for c in capsules}
     queue = list(visited)
-    results = list(capsules)
+    results: List[dict] = list(capsules)
+
     for _ in range(depth):
-        new_queue = []
+        new_queue: List[int] = []
         for cid in queue:
             meta = store.meta[cid]
             for link in meta.get("links", []):
-                if link in visited or link < 0 or link >= len(store.meta):
+                if (
+                    link in visited
+                    or link < 0
+                    or link >= len(store.meta)
+                    or len(results) >= limit
+                ):
                     continue
                 visited.add(link)
                 linked = store.meta[link].copy()
-                linked["score"] = 0.0
-                linked["id"] = link
+                linked.update({"score": 0.0, "id": link})
                 results.append(linked)
                 new_queue.append(link)
                 if len(results) >= limit:
-                    return results
+                    break
         queue = new_queue
+        if not queue or len(results) >= limit:
+            break
     return results
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-=======
-main
 
 
 def random_walk_links(
@@ -51,7 +53,7 @@ def random_walk_links(
     restart: float = 0.5,
     limit: int = 10,
 ) -> List[dict]:
-    """Expand capsules via random walk with restart."""
+    """Random-walk расширение капсул (walk with restart)."""
     if not capsules:
         return []
 
@@ -60,7 +62,7 @@ def random_walk_links(
     current = list(start)
 
     for _ in range(steps):
-        next_nodes = []
+        next_nodes: List[int] = []
         for cid in current:
             links = store.meta[cid].get("links", [])
             if links and random.random() > restart:
@@ -71,14 +73,10 @@ def random_walk_links(
         for cid in current:
             visited[cid] = visited.get(cid, 0) + 1
 
-    results = []
+    # Отбираем наиболее часто посещённые узлы
+    results: List[dict] = []
     for cid, count in sorted(visited.items(), key=lambda x: -x[1])[:limit]:
         meta = store.meta[cid].copy()
-        meta["score"] = float(count)
-        meta["id"] = cid
+        meta.update({"score": float(count), "id": cid})
         results.append(meta)
     return results
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-main
-main
