@@ -6,6 +6,7 @@ import os
 import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+import time
 
 from .core import (
     CapsuleStore, 
@@ -268,6 +269,34 @@ def reindex_store(index_path: str, model: str | None = None, factory: str | None
     print("index rebuilt")
 
 
+def cmd_module(args) -> None:
+    """Handle registry commands (add/remove/list)."""
+    from .registry import ModuleRegistry
+
+    reg = ModuleRegistry()
+
+    if args.action == "add":
+        reg.add_module(args.name, args.path, tags=args.tags)
+        print(f"Added module '{args.name}' -> {args.path}")
+    elif args.action == "remove":
+        removed = reg.remove_module(args.name)
+        if removed:
+            print(f"Removed module '{args.name}'")
+        else:
+            print("Nothing removed")
+    elif args.action == "list" or args.action is None:
+        modules = reg.list_modules()
+        if not modules:
+            print("Registry is empty")
+            return
+        print(f"{len(modules)} module(s):")
+        for m in modules:
+            ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(m.added))
+            print(f"- {m.name:20} {m.path:40} [{', '.join(m.tags)}] {ts}")
+    else:
+        print("Unknown module action")
+
+
 # -----------------------------------------------------------------------------
 # Clean CLI entry (rewritten – fixes previous merge conflicts)
 # -----------------------------------------------------------------------------
@@ -336,6 +365,22 @@ def main() -> None:  # noqa: D401
     dsl_parser.add_argument("--store", "-s", required=True)
     dsl_parser.add_argument("--top-k", "-k", type=int, default=5)
     dsl_parser.set_defaults(func=cmd_dsl)
+
+    # ---------------------------------------------------------- module registry
+    module_parser = subparsers.add_parser("module", help="Manage module registry")
+    module_sub = module_parser.add_subparsers(dest="action")
+    
+    module_add = module_sub.add_parser("add", help="Add module to registry")
+    module_add.add_argument("name")
+    module_add.add_argument("path")
+    module_add.add_argument("--tags", nargs="*")
+    
+    module_remove = module_sub.add_parser("remove", help="Remove module from registry")
+    module_remove.add_argument("name")
+    
+    module_list = module_sub.add_parser("list", help="List modules")
+    
+    module_parser.set_defaults(func=cmd_module)
 
     args = parser.parse_args()
 

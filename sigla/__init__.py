@@ -14,6 +14,7 @@ from .core import (
 from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND, ANALYZE
 from .graph import random_walk_links
 from .log import start as start_log, log as log_event
+from .registry import ModuleRegistry
 
 try:
     from .server import app as SiglaApp
@@ -49,4 +50,7 @@ __all__ = [
     
     # Server
     "SiglaApp",
+
+    # Registry
+    "ModuleRegistry",
 ]
