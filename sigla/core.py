@@ -168,14 +168,41 @@ class CapsuleStore:
         # Initialize empty FAISS index
         self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
 
-    def add_capsules(self, capsules: List[Dict[str, Any]]) -> None:
-        """Embed and add capsules to the index, assigning IDs."""
+    def add_capsules(
+        self,
+        capsules: List[Dict[str, Any]],
+        *,
+        vectors: "np.ndarray | None" = None,
+    ) -> None:
+        """Add capsules to the index.
+
+        Parameters
+        ----------
+        capsules : list[dict]
+            Capsule dictionaries with at least the ``text`` field.
+        vectors : np.ndarray | None, optional
+            Pre-computed embedding vectors shaped ``(N, dim)``.  When provided
+            we skip the costly ``model.encode`` call – useful for bulk loading
+            when embeddings are already available (e.g. token embeddings in
+            :func:`sigla.converter.convert_to_capsulegraph`).
+        """
         if not capsules:
             return
 
         start_id = len(self.meta)
-        texts = [c["text"] for c in capsules]
-        vectors = self.model.encode(texts, convert_to_numpy=True)
+
+        # Compute embeddings if not provided
+        if vectors is None:
+            texts = [c["text"] for c in capsules]
+            vectors = self.model.encode(texts, convert_to_numpy=True)
+
+        import numpy as np  # local import to avoid hard dep in type stubs
+        if not isinstance(vectors, np.ndarray):  # type: ignore[comparison-overlap]
+            raise TypeError("vectors must be a numpy.ndarray")
+
+        if vectors.shape[0] != len(capsules):
+            raise ValueError("vectors.shape[0] must match len(capsules)")
+
         faiss.normalize_L2(vectors)
 
         # Train index if needed

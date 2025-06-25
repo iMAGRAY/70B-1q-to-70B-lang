@@ -85,7 +85,8 @@ def convert_to_capsulegraph(
 
     # Directly add vectors without re-encoding to speed up
     capsules = [{"text": t, "tags": ["token"]} for t in texts]
-    store.add_capsules(capsules)  # this encodes, we need override vectors -> so custom add
+    vectors_slice = weight_np[:len(texts)]
+    store.add_capsules(capsules, vectors=vectors_slice)  # use precomputed vectors
     # The above encodes again; for speed we could directly set index but keep simple.
 
     # Save store
