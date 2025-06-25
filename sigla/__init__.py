@@ -1,38 +1,65 @@
-__version__ = "0.1.1"
-from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-from .graph import random_walk_links
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-=======
-from .graph import random_walk_links
-main
-main
-from .log import start as start_log, log as log_event
+"""SIGLA - Semantic Information Graph with Language Agents
 
-try:
-    from .server import app as SiglaApp
-except Exception:  # pragma: no cover - optional dependency
-    SiglaApp = None
+A lightweight FAISS-backed capsule database with local model support.
+"""
+
+__version__ = "0.2.0"
+
+from .core import (
+    CapsuleStore,
+    TransformersEmbeddings,
+    merge_capsules,
+    compress_capsules,
+    get_available_local_models,
+    create_store_with_best_local_model,
+    MissingDependencyError,
+)
+
+from .dsl import (
+    INTENT,
+    RETRIEVE,
+    MERGE,
+    INJECT,
+    EXPAND,
+)
+
+from .graph import (
+    expand_with_links,
+    random_walk_links,
+)
+
+from .converter import convert_to_capsulegraph
+
+# Meta backends
+from .meta import InMemoryMetaStore, SQLiteMetaStore
 
 __all__ = [
+    # Core classes
     "CapsuleStore",
+    "TransformersEmbeddings",
+    "MissingDependencyError",
+    
+    # Core functions
     "merge_capsules",
     "compress_capsules",
-    "SiglaApp",
+    "get_available_local_models", 
+    "create_store_with_best_local_model",
+    
+    # DSL functions
     "INTENT",
     "RETRIEVE",
     "MERGE",
     "INJECT",
     "EXPAND",
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
+    
+    # Graph functions
+    "expand_with_links",
     "random_walk_links",
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-=======
-    "random_walk_links",
-main
-main
-    "start_log",
-    "log_event",
+    
+    # Converter function
+    "convert_to_capsulegraph",
+    
+    # Meta backends
+    "InMemoryMetaStore",
+    "SQLiteMetaStore",
 ]
