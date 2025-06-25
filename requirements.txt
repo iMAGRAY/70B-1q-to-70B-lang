@@ -17,4 +17,5 @@ scikit-learn>=1.0.0
 # Development tools (optional)
 pytest>=6.0.0
 black>=22.0.0
-mypy>=0.910 
+mypy>=0.910
+prometheus_client>=0.17.0 

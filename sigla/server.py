@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 from typing import List, Optional
 
 # ---------------------------------------------------------------------------
@@ -9,17 +10,52 @@ from typing import List, Optional
 # ---------------------------------------------------------------------------
 
 try:
-    from fastapi import FastAPI, HTTPException, Depends, Header
+    from fastapi import FastAPI, HTTPException, Depends, Header, Response
     from contextlib import asynccontextmanager
     FASTAPI_AVAILABLE = True
 except ImportError:  # pragma: no cover – FastAPI not installed
     FASTAPI_AVAILABLE = False
+
+# Prometheus metrics (optional)
+try:
+    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST  # type: ignore
+    PROM_AVAILABLE = True
+except ImportError:  # pragma: no cover – prometheus_client not installed
+    PROM_AVAILABLE = False
+    # define dummies
+    def Counter(*_a, **_kw):  # type: ignore
+        class _Dummy:
+            def labels(self, *args, **kwargs):
+                return self
+            def inc(self, *_):
+                pass
+            def observe(self, *_):
+                pass
+        return _Dummy()
+    def Histogram(*_a, **_kw):  # type: ignore
+        return Counter()
 
 # ---------------------------------------------------------------------------
 
 from . import log as siglog
 from .core import CapsuleStore, merge_capsules, compress_capsules, MissingDependencyError
 from .graph import expand_with_links, random_walk_links
+
+# ---------------------------------------------------------------------------
+# Metrics
+# ---------------------------------------------------------------------------
+
+REQUEST_COUNT = Counter(
+    "sigla_requests_total",
+    "Total requests to SIGLA API",
+    ["endpoint"],
+) if PROM_AVAILABLE else Counter("noop", "", ["endpoint"])
+
+REQUEST_LATENCY = Histogram(
+    "sigla_request_latency_seconds",
+    "Request latency",
+    ["endpoint"],
+) if PROM_AVAILABLE else Histogram("noop", "", ["endpoint"])
 
 # ---------------------------------------------------------------------------
 # Global state
@@ -65,8 +101,29 @@ def create_server():
     # Create app
     app = FastAPI(title="SIGLA Server", lifespan=lifespan)
 
+    # Metrics helpers
+    def _track(name):
+        def decorator(func):
+            def wrapped(*args, **kwargs):
+                start = time.perf_counter()
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    duration = time.perf_counter() - start
+                    REQUEST_COUNT.labels(endpoint=name).inc()
+                    REQUEST_LATENCY.labels(endpoint=name).observe(duration)
+            return wrapped
+        return decorator
+
     # Routes
+    @app.get("/metrics")
+    def metrics():
+        if not PROM_AVAILABLE:
+            raise HTTPException(status_code=500, detail="prometheus_client not installed")
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
     @app.get("/search")
+    @_track("search")
     def search(query: str, top_k: int = 5, tags: str | None = None):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
