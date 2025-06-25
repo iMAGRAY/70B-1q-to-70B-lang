@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+ TrainingStart
+from typing import List, Dict
+=======
 from typing import Dict, List
+ main
 import random
 
 from .core import CapsuleStore
@@ -79,4 +83,8 @@ def random_walk_links(
         meta = store.meta[cid].copy()
         meta.update({"score": float(count), "id": cid})
         results.append(meta)
+ TrainingStart
+    return results 
+=======
     return results
+main
