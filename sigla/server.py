@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 try:
-    from fastapi import FastAPI, HTTPException as _FastAPIHTTPException, Request, Header, Depends
-    HTTPException = _FastAPIHTTPException  # type: ignore[assignment]
-except Exception:  # pragma: no cover – optional dependency
-    FastAPI = None  # type: ignore
-
-    # fallback-заглушка, чтобы не рушить импорт, если fastapi не установлена
+    from fastapi import FastAPI, HTTPException
+except Exception:  # pragma: no cover - optional dependency
+    FastAPI = None
     class HTTPException(Exception):
         def __init__(self, *args, **kwargs):  # noqa: D401,E501
             super().__init__(*args)
@@ -46,25 +43,11 @@ if app:
             raise RuntimeError("Index path not set")
         local_store = CapsuleStore()
         if os.path.exists(index_path + ".index"):
-            local_store.load(index_path)
-        store = local_store
-
-    # -------------------------------------------------------------------
-    # Simple API-Key security : задайте переменную окружения SIGLA_API_KEY
-    # чтобы включить защиту. Ключ передаётся в заголовке `X-API-Key`.
-    # -------------------------------------------------------------------
-
-    _API_KEY: Optional[str] = os.getenv("SIGLA_API_KEY")
-
-    def _require_api_key(x_api_key: Optional[str] = Header(default=None)):
-        if _API_KEY and x_api_key != _API_KEY:
-            raise HTTPException(status_code=401, detail="Invalid or missing API key")
-        return True
-
-    # ---------------------------- REST endpoints ---------------------------
+            s.load(index_path)
+        store = s
 
     @app.get("/search")
-    def search(query: str, top_k: int = 5, tags: str | None = None, _auth: bool = Depends(_require_api_key)):  # noqa: D401
+    def search(query: str, top_k: int = 5, tags: str | None = None):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(",") if tags else None
@@ -81,13 +64,11 @@ if app:
         return results
 
     @app.get("/ask")
-    def ask(
-        query: str,
-        top_k: int = 5,
-        tags: str | None = None,
-        temperature: float = 1.0,
-        _auth: bool = Depends(_require_api_key),
-    ):
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+    def ask(query: str, top_k: int = 5, tags: str | None = None, temperature: float = 1.0):
+=======
+    def ask(query: str, top_k: int = 5, tags: str | None = None):
+main
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(",") if tags else None
@@ -124,7 +105,8 @@ if app:
         return {"added": len(capsules)}
 
     @app.get("/info")
-    def info(_auth: bool = Depends(_require_api_key)):
+    def info():
+        """Return summary information about the index."""
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_counts: dict[str, int] = {}
@@ -217,7 +199,8 @@ if app:
         return {"summary": summary}
 
     @app.post("/prune")
-    def prune(ids: str = "", tags: str | None = None, _auth: bool = Depends(_require_api_key)):
+    def prune(ids: str = "", tags: str | None = None):
+        """Remove capsules by id or tags and rebuild the index."""
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         id_list = [int(x) for x in ids.split(",") if x] if ids else []
@@ -243,7 +226,8 @@ if app:
         return {"removed": removed}
 
     @app.post("/reindex")
-    def reindex(model: str | None = None, factory: str | None = None, _auth: bool = Depends(_require_api_key)):
+    def reindex(model: str | None = None, factory: str | None = None):
+        """Recompute all embeddings and rebuild the index."""
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         try:
