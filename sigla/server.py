@@ -54,7 +54,7 @@ if app:
         local_store = CapsuleStore()
         if os.path.exists(index_path + ".index"):
             local_store.load(index_path)
-        store = local_store
+            store = local_store
 
     @app.get("/search")
     def search(query: str, top_k: int = 5, tags: str | None = None):
