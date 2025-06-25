@@ -21,9 +21,8 @@
 5. Разработка и вклад
    * [Гайд разработчика](developer_guide.md)
    * [Contribution Guide](contribution.md)
-6. [Интеграция GitHub Models](github_models.md)
-7. [ЧаВО](faq.md)
-8. [Лицензия](../LICENSE)
+6. [ЧаВО](faq.md)
+7. [Лицензия](../LICENSE)
 
 ---
 

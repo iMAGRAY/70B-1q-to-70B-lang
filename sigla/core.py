@@ -159,6 +159,9 @@ class TransformersEmbeddings:
 
 
 class CapsuleStore:
+TrainingStart
+    """A lightweight FAISS-backed capsule database."""
+=======
     """Lightweight FAISS-backed capsule DB with automatic linking.
 
     Parameters
@@ -177,6 +180,7 @@ class CapsuleStore:
     device
         Target device (**cpu** | **cuda** | **mps** | **auto**).
     """
+ main
 
     def __init__(
         self,
@@ -203,11 +207,16 @@ class CapsuleStore:
             self.model = SentenceTransformer(model_name)
 
         self.dimension = self.model.get_sentence_embedding_dimension()
+TrainingStart
+        self.index_factory = index_factory
+        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+=======
 
         self.index_factory = index_factory
         # For small stores Flat index is enough and reconstruct() works.
         self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
 
+main
         self.meta: List[Dict[str, Any]] = []
 
         # --- graph options -------------------------------------------------
@@ -229,6 +238,10 @@ class CapsuleStore:
         
         # Normalize vectors for cosine similarity
         faiss.normalize_L2(vectors)
+TrainingStart
+        if not self.index.is_trained:
+            self.index.train(vectors)
+=======
         
         # Train index if needed
         if not self.index.is_trained:
@@ -236,6 +249,7 @@ class CapsuleStore:
             self.index.train(vectors)
         
         # Add vectors to index
+ main
         self.index.add(vectors)
         for i, cap in enumerate(capsules):
             meta = cap.copy()
@@ -284,7 +298,11 @@ class CapsuleStore:
             self.meta = data["meta"]
             self.model_name = data.get("model", self.model_name)
             self.index_factory = data.get("factory", "Flat")
+ TrainingStart
+        self.model = SentenceTransformer(self.model_name)
+=======
             self.model = SentenceTransformer(self.model_name)
+ main
 
     def query(self, text: str, top_k: int = 5, tags: List[str] | None = None) -> List[Dict[str, Any]]:
         """Return top matching capsules, optionally filtering by tags."""
@@ -361,11 +379,21 @@ class CapsuleStore:
         
         # Replace meta list and update IDs
         self.meta = new_meta
+TrainingStart
+        return removed
+
+    def rebuild_index(self, model_name: str | None = None, index_factory: str | None = None) -> None:
+=======
+        for new_id, meta in enumerate(self.meta):
+            meta["id"] = new_id
+            
+        print(f"Removed {len(ids)} capsules")
         return len(ids)
 
     def rebuild_index(
         self, model_name: Optional[str] = None, index_factory: Optional[str] = None
     ) -> None:
+main
         """Recompute all embeddings and rebuild the FAISS index."""
         if faiss is None:
             raise MissingDependencyError("faiss package is required")
@@ -396,6 +424,8 @@ class CapsuleStore:
         for idx, meta in enumerate(self.meta):
             meta["id"] = idx
 
+ TrainingStart
+=======
         # Finished rebuild_index
 
     def add_capsule(self, text: str, tags: Optional[List[str]] | None = None) -> int:
@@ -490,6 +520,7 @@ try:
     from transformers import pipeline  # type: ignore
 except Exception:  # pragma: no cover – optional dependency
     pipeline = None
+ main
 
 def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> str:
     """Merge capsule texts using softmax weighting by score."""
@@ -518,6 +549,41 @@ def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> 
     
     return "\n\n".join(result_parts)
 
+TrainingStart
+    try:
+        import numpy as np
+    except Exception:  # pragma: no cover - optional dependency
+        np = None
+
+    if np is None:
+        # Fallback to simple ranking if numpy isn't available
+        sorted_caps = sorted(capsules, key=lambda c: c.get("score", 0), reverse=True)
+        texts = [c["text"] for c in sorted_caps]
+        return "\n".join(texts)
+
+    scores = np.array([c.get("score", 0.0) for c in capsules], dtype=float)
+    # Softmax weighting for smoother importance distribution
+    scores = scores / (temperature if temperature else 1.0)
+    scores = scores - scores.max()
+    exp_scores = np.exp(scores)
+    weights = exp_scores / exp_scores.sum()
+
+    # Weighted text combination
+    texts = [c["text"] for c in capsules]
+    weighted_texts = []
+    
+    for text, weight in zip(texts, weights):
+        # Simple weight-based selection
+        if weight > 0.1:  # Only include high-weight capsules
+            weighted_texts.append(text)
+    
+    return "\n".join(weighted_texts[:5])  # Limit to top 5
+
+
+def compress_capsules(capsules: List[Dict[str, Any]], model_name: str = "sshleifer/distilbart-cnn-12-6") -> str:
+    """Compress multiple capsules into a summary using a summarization model."""
+=======
+
 def compress_capsules(
     capsules: List[Dict[str, Any]],
     model_name: str = "facebook/bart-large-cnn",
@@ -531,6 +597,7 @@ def compress_capsules(
     an ellipsis in-between.  This guarantees that the function always returns
     *something useful* without adding a hard dependency.
     """
+ main
     if not capsules:
         return ""
     
