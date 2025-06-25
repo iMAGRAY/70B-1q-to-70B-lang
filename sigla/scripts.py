@@ -189,6 +189,49 @@ def cmd_serve(args) -> None:
     uvicorn.run(app, host="0.0.0.0", port=args.port)
 
 
+def cmd_dsl(args) -> None:
+    """Execute DSL commands."""
+    from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND, ANALYZE
+    
+    # Load store
+    store = CapsuleStore()
+    try:
+        store.load(args.store)
+    except FileNotFoundError:
+        print(f"Error: Store '{args.store}' not found")
+        return
+    except MissingDependencyError as e:
+        print(f"Error: {e}")
+        return
+    
+    if args.command == "intent":
+        result = INTENT(store, args.text)
+        print(f"Intent: {result}")
+    elif args.command == "retrieve":
+        results = RETRIEVE(store, args.text, top_k=args.top_k)
+        print(f"Retrieved {len(results)} capsules:")
+        for i, result in enumerate(results):
+            print(f"  {i+1}. {result.get('text', '')[:100]}...")
+    elif args.command == "merge":
+        # For merge, we need to retrieve first
+        capsules = RETRIEVE(store, args.text, top_k=args.top_k)
+        result = MERGE(capsules)
+        print(f"Merged result:\n{result}")
+    elif args.command == "inject":
+        result = INJECT(args.text, store, tags=["dsl", "injected"])
+        print(f"Injected: {result}")
+    elif args.command == "expand":
+        # Get first result and expand it
+        capsules = RETRIEVE(store, args.text, top_k=1)
+        if capsules:
+            expanded = EXPAND(capsules[0], store, depth=1, limit=5)
+            print(f"Expanded to {len(expanded)} capsules:")
+            for i, cap in enumerate(expanded):
+                print(f"  {i+1}. {cap.get('text', '')[:100]}...")
+        else:
+            print("No capsules found to expand")
+
+
 def prune_capsules(index_path: str, ids: list[int] | None = None, tags: list[str] | None = None) -> None:
     """Remove capsules by id or tags and rebuild the index."""
     try:
