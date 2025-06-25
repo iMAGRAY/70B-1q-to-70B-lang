@@ -1,7 +1,5 @@
 import json
-import os
-from typing import List, Dict, Any, Optional, Union, cast
-from pathlib import Path
+from typing import List, Dict, Any
 
 try:
     import faiss  # type: ignore
@@ -150,86 +148,33 @@ class CapsuleStore:
         self,
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         index_factory: str = "Flat",
-        local_model_path: Optional[str] = None,
-        device: str = "auto",
-        auto_link_k: int = 5,
-        meta_backend: str = "memory",  # "memory" | "sqlite"
-        meta_path: Optional[str] = None,
-    ) -> None:
+    ):
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
+        if SentenceTransformer is None:
+            raise MissingDependencyError("sentence-transformers package is required")
         if faiss is None:
             raise MissingDependencyError("faiss package is required")
 
         self.model_name = model_name
-        self.index_factory = index_factory
-        self.local_model_path = local_model_path
-        self.device = device
-        self.auto_link_k = max(0, int(auto_link_k))
-        
-        # Initialize model
-        if local_model_path and os.path.exists(local_model_path):
-            print(f"Using local model: {local_model_path}")
-            self.model = TransformersEmbeddings(local_model_path, device=device)
-            self.model_name = f"local:{local_model_path}"
-        else:
-            if SentenceTransformer is None:
-                raise MissingDependencyError("sentence-transformers package is required")
-            print(f"Using Sentence Transformer: {model_name}")
-            self.model = SentenceTransformer(model_name)
-        
+        self.model = SentenceTransformer(model_name)
         self.dimension = self.model.get_sentence_embedding_dimension()
-        # If 'auto' – postpone creation until we know dataset size
-        if index_factory != "auto":
-            self.index = faiss.index_factory(
-                self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT
-            )  # type: ignore[attr-defined]
-        else:
-            # start with Flat index placeholder; will switch automatically
-            self.index = faiss.index_factory(
-                self.dimension, "Flat", faiss.METRIC_INNER_PRODUCT
-            )  # type: ignore[attr-defined]
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+        self.index_factory = index_factory
+        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+        self.index = faiss.IndexFlatIP(self.dimension)
+=======
+        self.index_factory = index_factory
+        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+main
+main
+        self.meta: List[Dict[str, Any]] = []
 
-        # ------------------------------------------------------------------
-        # Meta storage backend – keeps capsule dictionaries.  The default
-        # In-memory backend preserves historical behaviour where
-        # ``CapsuleStore.meta`` is a plain Python list so existing code/tests
-        # continue to work unchanged.
-        # ------------------------------------------------------------------
-
-        from .meta import InMemoryMetaStore, SQLiteMetaStore  # local import
-
-        if meta_backend == "sqlite":
-            try:
-                self._meta_store = SQLiteMetaStore(meta_path or "capsules.sqlite3")
-            except Exception as e:  # pragma: no cover – fallback safety
-                print(f"[warn] SQLiteMetaStore init failed ({e}), falling back to memory")
-                self._meta_store = InMemoryMetaStore()
-        else:
-            # default
-            self._meta_store = InMemoryMetaStore()
-
-        self.meta: List[Dict[str, Any]] = cast(List[Dict[str, Any]], self._meta_store.all())  # legacy alias
-        
-        print(f"CapsuleStore initialized:")
-        print(f"  Model: {self.model_name}")
-        print(f"  Dimension: {self.dimension}")
-        print(f"  Index: {index_factory}")
-
-    @classmethod
-    def with_local_model(cls, model_path: str, **kwargs):
-        """Create CapsuleStore with local model."""
-        return cls(local_model_path=model_path, **kwargs)
-
-    def add_capsule(self, content: str, tags: Optional[List[str]] = None, links: Optional[List[int]] = None) -> int:
-        """Add a single capsule and return its ID."""
-        capsule = {
-            "text": content,
-            "tags": tags or [],
-            "links": links or []
-        }
-        self.add_capsules([capsule])
-        return len(self.meta) - 1
-
-    def add_capsules(self, capsules: List[Dict[str, Any]]) -> None:
+    def add_capsules(self, capsules: List[Dict[str, Any]]):
         """Embed and add capsules to the index, assigning IDs."""
         if not capsules:
             return
@@ -253,56 +198,56 @@ class CapsuleStore:
         
         # Add vectors to index
         self.index.add(vectors)
-        print(f"Added {len(vectors)} vectors to index")
-
-        # auto index upgrade if needed
-        self._maybe_switch_index()
-
-        new_metas: List[Dict[str, Any]] = []
         for i, cap in enumerate(capsules):
             meta = cap.copy()
             if "content" in meta and "text" not in meta:
                 meta["text"] = meta["content"]
             meta.setdefault("tags", [])
             meta.setdefault("links", [])
-            meta["id"] = start_id + i
-            new_metas.append(meta)
+            meta["id"] = start + i
+            self.meta.append(meta)
 
-        # Persist – append to meta store
-        try:
-            self._meta_store.add_many(new_metas)  # type: ignore[attr-defined]
-        except AttributeError:
-            # fallback (for backends without add_many)
-            for m in new_metas:
-                self._meta_store.add_many([m])  # type: ignore[attr-defined]
+    def save(self, path: str):
+        faiss.write_index(self.index, path + ".index")
+        with open(path + ".json", "w", encoding="utf-8") as f:
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+            json.dump({"model": self.model_name, "meta": self.meta}, f, ensure_ascii=False, indent=2)
+=======
+main
+            json.dump(
+                {
+                    "model": self.model_name,
+                    "factory": self.index_factory,
+                    "meta": self.meta,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
 
-        self.meta = cast(List[Dict[str, Any]], self._meta_store.all())
+    def load(self, path: str):
+        self.index = faiss.read_index(path + ".index")
+        with open(path + ".json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            self.meta = data["meta"]
+            self.model_name = data.get("model", self.model_name)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+            self.index_factory = data.get("factory", "Flat")
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+            self.index_factory = data.get("factory", "Flat")
+main
+main
+        self.model = SentenceTransformer(self.model_name)
 
-        # ------------------------------------------------------------------
-        # Automatic linking: для каждой новой капсулы ищем ближайшие top_k
-        # существующих и добавляем взаимные ссылки. Работает только если
-        # было минимум одно «старое» в базе.
-        # ------------------------------------------------------------------
-        if self.auto_link_k > 0 and start_id > 0:
-            for new_local_idx in range(len(capsules)):
-                global_idx = start_id + new_local_idx
-
-                # Берём вектор новой капсулы (векторы идут в том же порядке)
-                new_vec = vectors[new_local_idx : new_local_idx + 1]
-                _, neigh = self.index.search(new_vec, self.auto_link_k + 1)
-
-                for n_idx in neigh[0]:
-                    if n_idx == -1 or n_idx == global_idx:
-                        continue
-                    # Добавляем двустороннюю связь
-                    if n_idx not in self.meta[global_idx]["links"]:
-                        self.meta[global_idx]["links"].append(int(n_idx))
-                    if global_idx not in self.meta[n_idx]["links"]:
-                        self.meta[n_idx]["links"].append(int(global_idx))
-
-    def query(
-        self, text: str, top_k: int = 5, tags: Optional[List[str]] = None
-    ) -> List[Dict[str, Any]]:
+    def query(self, text: str, top_k: int = 5, tags: List[str] | None = None) -> List[Dict[str, Any]]:
         """Return top matching capsules, optionally filtering by tags."""
         if self.index.ntotal == 0:
             return []
@@ -343,76 +288,6 @@ class CapsuleStore:
                 
         return results
 
-    def save(self, path: str) -> None:
-        """Save index (*.index) and metadata (*.json)."""
-        if faiss is None:
-            raise MissingDependencyError("faiss package is required")
-            
-        index_path = f"{path}.index"
-        meta_path = f"{path}.json"
-        
-        faiss.write_index(self.index, index_path)
-        
-        save_data = {
-            "model": self.model_name,
-            "factory": self.index_factory,
-            "meta": self.meta,
-            "device": getattr(self, 'device', 'auto')
-        }
-        
-        with open(meta_path, "w", encoding="utf-8") as fp:
-            json.dump(save_data, fp, ensure_ascii=False, indent=2)
-        
-        print(f"Saved index to {index_path} and metadata to {meta_path}")
-
-    def load(self, path: str) -> None:
-        """Load index and metadata."""
-        if faiss is None:
-            raise MissingDependencyError("faiss package is required")
-            
-        index_path = f"{path}.index"
-        meta_path = f"{path}.json"
-        
-        if not os.path.exists(index_path) or not os.path.exists(meta_path):
-            raise FileNotFoundError(f"Index files not found: {index_path} or {meta_path}")
-        
-        self.index = faiss.read_index(index_path)
-        
-        with open(meta_path, "r", encoding="utf-8") as fp:
-            data = json.load(fp)
-        
-        self.meta = data["meta"]
-        # Sync meta storage backend
-        if hasattr(self, "_meta_store"):
-            try:
-                self._meta_store._replace_all(self.meta)  # type: ignore[attr-defined]
-            except Exception:
-                pass
-        saved_model = data.get("model", self.model_name)
-        self.index_factory = data.get("factory", "Flat")
-        self.device = data.get("device", "auto")
-        
-        # Reinitialize model if different
-        if saved_model != self.model_name:
-            if saved_model.startswith("local:"):
-                local_path = saved_model[6:]  # Remove "local:" prefix
-                if os.path.exists(local_path):
-                    self.model = TransformersEmbeddings(local_path, device=self.device)
-                else:
-                    print(f"Warning: Local model path not found: {local_path}")
-                    print("Falling back to default model")
-                    if SentenceTransformer is None:
-                        raise MissingDependencyError("sentence-transformers package is required")
-                    self.model = SentenceTransformer(self.model_name)
-            else:
-                if SentenceTransformer is None:
-                    raise MissingDependencyError("sentence-transformers package is required")
-                self.model = SentenceTransformer(saved_model)
-                self.model_name = saved_model
-        
-        self.dimension = self.model.get_sentence_embedding_dimension()
-        print(f"Loaded index with {self.index.ntotal} vectors and {len(self.meta)} metadata entries")
-
     def remove_capsules(self, ids: List[int]) -> int:
         """Remove capsules by id, rebuilding the index."""
         if not ids:
@@ -437,16 +312,9 @@ class CapsuleStore:
         # Update links
         for meta in new_meta:
             meta["links"] = [mapping[l] for l in meta.get("links", []) if l in mapping]
-
-        # replace meta-store contents; will update alias
-        self._meta_store._replace_all(new_meta)  # type: ignore[attr-defined]  # safe for in-memory/sqlite
-        self.meta = cast(List[Dict[str, Any]], self._meta_store.all())
-        
-        # Rebuild index
-        self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)  # type: ignore[attr-defined]
-        if texts:
-            print(f"Rebuilding index with {len(texts)} texts...")
-            vectors = self.model.encode(texts, convert_to_numpy=True)
+        vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
+        self.index = faiss.IndexFlatIP(self.dimension)
+        if vectors is not None and len(texts) > 0:
             faiss.normalize_L2(vectors)
             if not self.index.is_trained:
                 self.index.train(vectors)
@@ -481,11 +349,9 @@ class CapsuleStore:
             self.index_factory = index_factory
             
         texts = [m["text"] for m in self.meta]
-        self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)  # type: ignore[attr-defined]
-        
-        if texts:
-            print(f"Rebuilding index with {len(texts)} texts...")
-            vectors = self.model.encode(texts, convert_to_numpy=True)
+        vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
+        self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
+        if vectors is not None and len(texts) > 0:
             faiss.normalize_L2(vectors)
             if not self.index.is_trained:
                 self.index.train(vectors)
@@ -493,59 +359,11 @@ class CapsuleStore:
             
         for idx, meta in enumerate(self.meta):
             meta["id"] = idx
-        
-        print("Index rebuilt successfully")
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
 
-    def get_info(self) -> Dict[str, Any]:
-        """Get information about the store."""
-        tag_counts: Dict[str, int] = {}
-        for m in self.meta:
-            for t in m.get("tags", []):
-                tag_counts[t] = tag_counts.get(t, 0) + 1
-        
-        return {
-            "model": self.model_name,
-            "dimension": self.dimension,
-            "index_factory": self.index_factory,
-            "capsules": len(self.meta),
-            "vectors": self.index.ntotal,
-            "tags": tag_counts,
-            "device": getattr(self, 'device', 'auto')
-        }
-
-    # ---------------------------------------------------------------
-    # Internal helper: choose index based on corpus size when using
-    # index_factory='auto'. For small corpora Flat is fine; для больших
-    # (> 30k) используем IVF.
-    # ---------------------------------------------------------------
-
-    def _maybe_switch_index(self):
-        if self.index_factory != "auto":
-            return
-
-        total = self.index.ntotal
-        # thresholds can be tuned
-        if total < 30000:
-            desired = "Flat"
-        elif total < 200000:
-            desired = "IVF100,Flat"
-        else:
-            desired = "IVF400,Flat"
-
-        # already correct type?
-        if self.index_factory == desired or self.index.__class__.__name__.startswith("IndexIVF") and desired.startswith("IVF"):
-            return
-
-        print(f"[auto] Switching index to {desired} for {total} vectors…")
-        # extract all vectors
-        vectors = self.index.reconstruct_n(0, total) if total else None  # type: ignore[attr-defined]
-        self.index = faiss.index_factory(self.dimension, desired, faiss.METRIC_INNER_PRODUCT)  # type: ignore[arg-type]
-        if vectors is not None and len(vectors):
-            if not self.index.is_trained:
-                self.index.train(vectors)  # type: ignore[attr-defined]
-            self.index.add(vectors)  # type: ignore[attr-defined]
-        self.index_factory = desired
-
+=======
+main
+main
 
 def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> str:
     """Merge capsule texts using softmax weighting by score."""
@@ -590,129 +408,14 @@ def compress_capsules(
     """
     if not capsules:
         return ""
-    
-    def get_text(cap: Dict[str, Any]) -> str:
-        return cap.get("text", cap.get("content", ""))
-    
-    # Merge all texts
-    combined_text = "\n\n".join(get_text(cap) for cap in capsules)
-
-    # --- Advanced summarisation --------------------------------------------------
-    # Если текст слишком большой (> 4000 символов), используем "скользящее окно":
-    #   1. Бьём текст на чанки ~1024 символа с overlap 200.
-    #   2. Саммаризируем каждый чанк.
-    #   3. Саммаризируем объединение всех промежуточных саммари.
-    # Это снижает накладные расходы по памяти/токенам и даёт более полное
-    # содержание.
-    # ---------------------------------------------------------------------------
+    if pipeline is None:
+        raise MissingDependencyError("transformers package is required for compression")
 
     try:
-        from transformers import pipeline  # type: ignore
+        summarizer = pipeline("summarization", model=model_name)
+    except Exception as e:  # pragma: no cover - optional dependency
+        raise MissingDependencyError(str(e))
 
-        summariser = pipeline(
-            "summarization",
-            model=model_name,
-            truncation=True,
-        )
-
-        def _summ(text: str) -> str:
-            out = summariser(
-                text,
-                max_length=180,
-                min_length=60,
-                do_sample=False,
-            )
-            if isinstance(out, list) and out:
-                return (
-                    out[0].get("summary_text")
-                    or out[0].get("generated_text")
-                    or ""
-                ).strip()
-            return ""
-
-        if len(combined_text) > 4000:
-            chunk_size = 1024
-            overlap = 200
-            chunks = []
-            start = 0
-            while start < len(combined_text):
-                end = start + chunk_size
-                chunk = combined_text[start:end]
-                chunks.append(chunk)
-                start = end - overlap  # slide with overlap
-
-            partial_summaries = [_summ(c) for c in chunks if c.strip()]
-            combined_summary = "\n".join(partial_summaries)
-            final_summary = _summ(combined_summary)
-            if final_summary:
-                return final_summary
-        else:
-            summary = _summ(combined_text)
-            if summary:
-                return summary
-    except (ImportError, Exception):
-        # Either transformers is not installed or the model could not be
-        # loaded – fall back to a deterministic truncation routine.
-        pass
-
-    # Fallback: simple intelligent truncation
-    if len(combined_text) <= 300:
-        return combined_text
-
-    first_part = combined_text[:150]
-    last_part = combined_text[-150:]
-
-    return f"{first_part}...\n\n...{last_part}"
-
-
-# Auto-detect local models
-def get_available_local_models() -> List[str]:
-    """Get list of available local models in the current directory."""
-    current_dir = Path(".")
-    models = []
-    
-    search_dirs = [current_dir, current_dir / "models"]
-
-    for base in search_dirs:
-        if not base.exists():
-            continue
-        for item in base.iterdir():
-            if not item.is_dir() or item.name.startswith('.'):
-                continue
-            # Check looks like a HF model dir
-            if (item / "config.json").exists() and (
-                (item / "pytorch_model.bin").exists()
-                or (item / "model.safetensors").exists()
-                or any(item.glob("model-*.safetensors"))
-            ):
-                models.append(str(item))
-    
-    return sorted(models)
-
-
-def create_store_with_best_local_model(**kwargs) -> CapsuleStore:
-    """Create CapsuleStore with the best available local model."""
-    local_models = get_available_local_models()
-    
-    if not local_models:
-        print("No local models found, using default sentence-transformers model")
-        return CapsuleStore(**kwargs)
-    
-    # Prefer larger models (assuming better quality)
-    # Sort by directory size (rough approximation)
-    def get_dir_size(path_str: str) -> int:
-        path = Path(path_str)
-        total_size = 0
-        try:
-            for file in path.rglob("*"):
-                if file.is_file():
-                    total_size += file.stat().st_size
-        except:
-            pass
-        return total_size
-    
-    local_models.sort(key=get_dir_size, reverse=True)
-    best_model = local_models[0]
-    
-    print(f"Found {len(local_models)} local models, using: {best_model}")
-    return CapsuleStore.with_local_model(best_model, **kwargs)
+    text = "\n".join(c["text"] for c in capsules)
+    summary = summarizer(text, max_length=60, min_length=5, do_sample=False)
+    return summary[0]["summary_text"].strip()
