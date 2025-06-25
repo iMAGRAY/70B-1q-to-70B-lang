@@ -77,8 +77,11 @@ API_KEY_ENV = "SIGLA_API_KEY"
 # auto-reindex settings
 REINDEX_THRESHOLD = 500  # capsules added
 _added_since_reindex = 0
+<<<<<<< HEAD
 _ingest_total = 0
 _ingest_done = 0
+=======
+>>>>>>> da64b8d172388d5ccd7110d9da3bbc8cbf63e912
 _event_subscribers: list[Any] = []
 
 
@@ -225,6 +228,7 @@ def create_server():
     ):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
+<<<<<<< HEAD
         global _added_since_reindex, _ingest_total, _ingest_done
 
         # If client sends total count once – reset counters
@@ -243,6 +247,13 @@ def create_server():
             payload.update({"progress": pct})
         _broadcast(payload)
 
+=======
+        global _added_since_reindex
+        store.add_capsules(capsules)
+        _added_since_reindex += len(capsules)
+        # notify stream listeners
+        _broadcast({"event": "update", "added": len(capsules)})
+>>>>>>> da64b8d172388d5ccd7110d9da3bbc8cbf63e912
         if index_path:
             store.save(index_path)
         # auto reindex if threshold exceeded
@@ -258,7 +269,11 @@ def create_server():
             _added_since_reindex = 0
         siglog.log({"type": "update", "added": len(capsules)})
         CAPSULE_TOTAL.set(len(store.meta))
+<<<<<<< HEAD
         return {"added": len(capsules), "progress": payload.get("progress")}
+=======
+        return {"added": len(capsules)}
+>>>>>>> da64b8d172388d5ccd7110d9da3bbc8cbf63e912
 
     @app.get("/info")
     def info():
