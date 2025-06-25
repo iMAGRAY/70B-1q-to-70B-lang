@@ -1,5 +1,22 @@
+"""Core data structures and utilities for SIGLA.
+
+This module contains the main `CapsuleStore` class – a small wrapper around
+FAISS that keeps a *capsule graph* (text chunks + metadata) in memory and on
+disk.  It also provides helper utilities for working with local HF models and
+simple convenience functions used by the CLI and server layers.
+
+The implementation purposefully avoids heavy dependencies at import time –
+optional requirements such as *torch*, *transformers*, *faiss* are loaded
+lazily and guarded with `MissingDependencyError` so that parts of the package
+(e.g. the docs) can be imported without the ML stack being installed.
+"""
+
+from __future__ import annotations
+
 import json
-from typing import List, Dict, Any
+import os
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Union
 
 try:
     import faiss  # type: ignore
@@ -142,37 +159,59 @@ class TransformersEmbeddings:
 
 
 class CapsuleStore:
-    """A lightweight FAISS-backed capsule database with local model support."""
+    """Lightweight FAISS-backed capsule DB with automatic linking.
+
+    Parameters
+    ----------
+    model_name
+        Name (or HF hub path) of the encoder to use.  A **local** model can be
+        passed by prefixing the path with ``local:`` or by using the
+        :py:meth:`with_local_model` constructor.
+    index_factory
+        FAISS factory string, e.g. ``"Flat"``, ``"IVF100"``.
+    auto_link_k
+        If > 0, graph links between capsules are created automatically: for
+        every capsule we find *k* nearest neighbours and put their integer IDs
+        into the ``links`` field.  This makes simple graph traversals possible
+        without an explicit DB.
+    device
+        Target device (**cpu** | **cuda** | **mps** | **auto**).
+    """
 
     def __init__(
         self,
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         index_factory: str = "Flat",
+        *,
+        auto_link_k: int = 0,
+        device: str = "auto",
     ):
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-main
-main
         if SentenceTransformer is None:
             raise MissingDependencyError("sentence-transformers package is required")
         if faiss is None:
             raise MissingDependencyError("faiss package is required")
 
+        self.device = device
+
         self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
+
+        # Support *local:* prefix – used by with_local_model and rebuild_index
+        if model_name.startswith("local:"):
+            local_path = model_name[len("local:") :]
+            self.model = TransformersEmbeddings(local_path, device=device)
+        else:
+            self.model = SentenceTransformer(model_name)
+
         self.dimension = self.model.get_sentence_embedding_dimension()
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
+
         self.index_factory = index_factory
+        # For small stores Flat index is enough and reconstruct() works.
         self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-        self.index = faiss.IndexFlatIP(self.dimension)
-=======
-        self.index_factory = index_factory
-        self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
-main
-main
+
         self.meta: List[Dict[str, Any]] = []
+
+        # --- graph options -------------------------------------------------
+        self.auto_link_k = auto_link_k
 
     def add_capsules(self, capsules: List[Dict[str, Any]]):
         """Embed and add capsules to the index, assigning IDs."""
@@ -204,18 +243,29 @@ main
                 meta["text"] = meta["content"]
             meta.setdefault("tags", [])
             meta.setdefault("links", [])
-            meta["id"] = start + i
+            meta["id"] = start_id + i
             self.meta.append(meta)
+
+        # ------------------------------------------------------------------
+        # Auto-linking (optional) – expensive for large collections but good
+        # enough for small test datasets.
+        # ------------------------------------------------------------------
+
+        if self.auto_link_k > 0 and self.index.ntotal > 1:
+            for idx in range(len(self.meta)):
+                # Reconstruct vector for *idx* (works for Flat/IVF indices).
+                try:
+                    vec = self.index.reconstruct(idx)
+                except Exception:
+                    # fallback – re-encode (slow but safe)
+                    vec = self.model.encode([self.meta[idx]["text"]], convert_to_numpy=True)[0]
+                scores, nbrs = self.index.search(vec.reshape(1, -1), self.auto_link_k + 1)
+                neighbours = [int(n) for n in nbrs[0] if n != idx][: self.auto_link_k]
+                self.meta[idx]["links"] = neighbours
 
     def save(self, path: str):
         faiss.write_index(self.index, path + ".index")
         with open(path + ".json", "w", encoding="utf-8") as f:
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-            json.dump({"model": self.model_name, "meta": self.meta}, f, ensure_ascii=False, indent=2)
-=======
-main
             json.dump(
                 {
                     "model": self.model_name,
@@ -226,10 +276,6 @@ main
                 ensure_ascii=False,
                 indent=2,
             )
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
-=======
-main
-main
 
     def load(self, path: str):
         self.index = faiss.read_index(path + ".index")
@@ -237,15 +283,8 @@ main
             data = json.load(f)
             self.meta = data["meta"]
             self.model_name = data.get("model", self.model_name)
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
             self.index_factory = data.get("factory", "Flat")
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-=======
-            self.index_factory = data.get("factory", "Flat")
-main
-main
-        self.model = SentenceTransformer(self.model_name)
+            self.model = SentenceTransformer(self.model_name)
 
     def query(self, text: str, top_k: int = 5, tags: List[str] | None = None) -> List[Dict[str, Any]]:
         """Return top matching capsules, optionally filtering by tags."""
@@ -320,7 +359,8 @@ main
                 self.index.train(vectors)
             self.index.add(vectors)
         
-        # Update IDs
+        # Replace meta list and update IDs
+        self.meta = new_meta
         for new_id, meta in enumerate(self.meta):
             meta["id"] = new_id
             
@@ -356,14 +396,104 @@ main
             if not self.index.is_trained:
                 self.index.train(vectors)
             self.index.add(vectors)
-            
+        
         for idx, meta in enumerate(self.meta):
             meta["id"] = idx
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
 
-=======
-main
-main
+        # Finished rebuild_index
+
+    def add_capsule(self, text: str, tags: Optional[List[str]] | None = None) -> int:
+        """Add a single *text* capsule and return its assigned ID."""
+        capsule = {"text": text, "tags": tags or []}
+        self.add_capsules([capsule])
+        return capsule["id"]
+
+    # ------------------------------------------------------------------
+    # Introspection helpers
+    # ------------------------------------------------------------------
+
+    def get_info(self) -> Dict[str, Any]:
+        tag_counts: Dict[str, int] = {}
+        for meta in self.meta:
+            for t in meta.get("tags", []):
+                tag_counts[t] = tag_counts.get(t, 0) + 1
+
+        return {
+            "model": self.model_name,
+            "dimension": self.dimension,
+            "index_factory": self.index_factory,
+            "capsules": len(self.meta),
+            "vectors": self.index.ntotal if self.index else 0,
+            "tags": tag_counts,
+            "device": self.device,
+        }
+
+    # ------------------------------------------------------------------
+    # Alternate constructors
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def with_local_model(
+        cls,
+        model_path: str,
+        *,
+        index_factory: str = "Flat",
+        auto_link_k: int = 0,
+        device: str = "auto",
+    ) -> "CapsuleStore":
+        """Construct a store that uses a *local* HF model directory."""
+
+        instance = cls.__new__(cls)  # bypass __init__
+        if faiss is None:
+            raise MissingDependencyError("faiss package is required")
+
+        instance.device = device
+        instance.model_name = f"local:{model_path}"
+        instance.model = TransformersEmbeddings(model_path, device=device)
+        instance.dimension = instance.model.get_sentence_embedding_dimension()
+        instance.index_factory = index_factory
+        instance.index = faiss.index_factory(instance.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+        instance.meta = []
+        instance.auto_link_k = auto_link_k
+        return instance
+
+
+# ---------------------------------------------------------------------------
+# Local-model discovery helpers (very small, no external deps).
+# ---------------------------------------------------------------------------
+
+
+def get_available_local_models(base_dir: str | Path | str = "./models") -> List[str]:
+    """Return list of directories that *look like* HF model checkpoints."""
+
+    base = Path(base_dir)
+    if not base.exists():
+        return []
+    candidates: List[str] = []
+    for path in base.iterdir():
+        if path.is_dir() and (path / "config.json").exists():
+            candidates.append(str(path))
+    return candidates
+
+
+def create_store_with_best_local_model(*, device: str = "auto", auto_link_k: int = 0) -> CapsuleStore:
+    """Pick first local model (if any) and build a store around it."""
+
+    models = get_available_local_models()
+    if not models:
+        # Fallback to default online model
+        return CapsuleStore(device=device, auto_link_k=auto_link_k)
+
+    return CapsuleStore.with_local_model(models[0], device=device, auto_link_k=auto_link_k)
+
+# ---------------------------------------------------------------------------
+# transformers.pipeline import (optional) – needed for compress_capsules
+# ---------------------------------------------------------------------------
+
+try:
+    from transformers import pipeline  # type: ignore
+except Exception:  # pragma: no cover – optional dependency
+    pipeline = None
 
 def merge_capsules(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> str:
     """Merge capsule texts using softmax weighting by score."""
