@@ -11,7 +11,7 @@ from .core import (
     create_store_with_best_local_model,
 )
 
-from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
+from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND, ANALYZE
 from .graph import random_walk_links
 from .log import start as start_log, log as log_event
 
@@ -38,6 +38,7 @@ __all__ = [
     "MERGE",
     "INJECT",
     "EXPAND",
+    "ANALYZE",
 
     # Graph utilities
     "random_walk_links",

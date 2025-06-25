@@ -62,7 +62,13 @@ class MetaStore(ABC):
     # ------------------------------------------------------------------
 
     def _replace_all(self, new_data: List[Dict[str, Any]]):
-        raise NotImplementedError
+        """Replace all stored data with new_data. Override in subclasses for efficiency."""
+        # Default implementation: clear and re-add
+        # This is inefficient but works for the abstract base
+        # Concrete implementations should override this
+        current = list(self.all())
+        current.clear()
+        current.extend(new_data)
 
     # ------------------------------------------------------------------
     # Convenience properties

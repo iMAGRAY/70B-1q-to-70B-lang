@@ -44,9 +44,16 @@ except ImportError:
 import numpy as np
 
 
-class MissingDependencyError(RuntimeError):
-    """Raised when optional dependencies are not available."""
-    pass
+class MissingDependencyError(Exception):
+    """Raised when optional dependency is missing but required for operation."""
+    
+    def __init__(self, dependency: str, operation: str = "this operation"):
+        self.dependency = dependency
+        self.operation = operation
+        super().__init__(
+            f"Missing dependency '{dependency}' required for {operation}. "
+            f"Install with: pip install {dependency}"
+        )
 
 
 class TransformersEmbeddings:
