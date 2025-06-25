@@ -7,14 +7,18 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import time
+import subprocess
+from itertools import islice
 
 from .core import (
     CapsuleStore, 
     get_available_local_models, 
     create_store_with_best_local_model,
-    MissingDependencyError
+    MissingDependencyError,
+    compress_capsules,
 )
 from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
+from .abtest import run_ab_test
 
 # logging helper
 from . import log as siglog
@@ -72,8 +76,27 @@ def cmd_ingest(args) -> None:
         print("No content found to ingest")
         sys.exit(1)
     
-    print(f"Adding {len(capsules)} capsules...")
-    store.add_capsules(capsules)
+    # --------------------------- streaming ingest in batches for efficiency
+    total = len(capsules)
+    batch_size = max(1, args.batch_size)
+
+    try:
+        from tqdm import tqdm  # type: ignore
+        pbar = tqdm(total=total, desc="Ingesting", unit="caps")
+    except ImportError:
+        pbar = None
+
+    it = iter(capsules)
+    while True:
+        batch = list(islice(it, batch_size))
+        if not batch:
+            break
+        store.add_capsules(batch)
+        if pbar:
+            pbar.update(len(batch))
+
+    if pbar:
+        pbar.close()
     
     # Save the store
     store.save(args.output)
@@ -297,6 +320,182 @@ def cmd_module(args) -> None:
         print("Unknown module action")
 
 
+def cmd_list(args) -> None:
+    """List stored capsules."""
+    if not os.path.exists(f"{args.store}.json"):
+        print(f"Error: Store not found: {args.store}")
+        sys.exit(1)
+
+    store = CapsuleStore()
+    store.load(args.store)
+
+    tag_filter = set(args.tags or [])
+    count = 0
+    for meta in store.meta:
+        if tag_filter and not tag_filter.intersection(meta.get("tags", [])):
+            continue
+        print(f"[{meta['id']}] {meta.get('tags', [])} -> {meta.get('text', '')[:120]}…")
+        count += 1
+        if args.limit and count >= args.limit:
+            break
+    if count == 0:
+        print("No capsules match the criteria")
+
+
+def cmd_capsule(args) -> None:
+    """Display a single capsule by id."""
+    if not os.path.exists(f"{args.store}.json"):
+        print(f"Error: Store not found: {args.store}")
+        sys.exit(1)
+    store = CapsuleStore()
+    store.load(args.store)
+    if args.id < 0 or args.id >= len(store.meta):
+        print("Capsule id out of range")
+        sys.exit(1)
+    meta = store.meta[args.id]
+    print(json.dumps(meta, ensure_ascii=False, indent=2))
+
+
+def cmd_compress(args) -> None:
+    """Summarize top-k capsules using an LLM summarizer."""
+    if not os.path.exists(f"{args.store}.json"):
+        print(f"Error: Store not found: {args.store}")
+        sys.exit(1)
+    store = CapsuleStore()
+    store.load(args.store)
+    results = store.query(args.query, top_k=args.top_k, tags=args.tags)
+    if not results:
+        print("Nothing found to compress")
+        return
+    summary = compress_capsules(results, model_name=args.model)
+    print(summary)
+
+
+def cmd_prune(args) -> None:
+    """Remove capsules by id list or tag filter."""
+    ids = [int(x) for x in args.ids.split(',')] if args.ids else None
+    prune_capsules(args.store, ids=ids, tags=args.tags)
+
+
+def cmd_reindex(args) -> None:
+    """Rebuild embeddings for the store."""
+    reindex_store(args.store, model=args.model, factory=args.factory)
+
+
+def cmd_abtest(args) -> None:
+    """Run A/B evaluation on a dataset JSON file."""
+    import json
+    from pathlib import Path
+
+    path = Path(args.dataset)
+    if not path.exists():
+        print(f"Dataset not found: {path}")
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"Failed to load dataset: {e}")
+        return
+    if not isinstance(data, list):
+        print("Dataset must be a list of objects with 'question' and 'answer'")
+        return
+
+    store = CapsuleStore()
+    try:
+        store.load(args.store)
+    except FileNotFoundError:
+        print(f"Store '{args.store}' not found")
+        return
+    except MissingDependencyError as e:
+        print(f"Error: {e}")
+        return
+
+    summary = run_ab_test(
+        store,
+        data,
+        top_k=args.top_k,
+        temperature=args.temperature,
+        baseline=args.baseline,
+    )
+
+    print("A/B test summary (average)")
+    for side in ("sigla", "baseline"):
+        print(f"  {side}:")
+        for k, v in sorted(summary[side].items()):
+            print(f"    {k:8}: {v:.3f}")
+
+
+def _run_repl(store: "CapsuleStore", top_k: int = 5, tags: list[str] | None = None) -> None:
+    """Very small interactive REPL for quick manual testing."""
+    try:
+        from prompt_toolkit import prompt  # type: ignore
+    except ImportError:
+        prompt = input  # fallback
+
+    print("Entering SIGLA shell. Type :q or :exit to quit.")
+    while True:
+        try:
+            query = prompt("SIGLA> ")  # type: ignore
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if query.strip() in {":q", ":exit"}:
+            break
+        if not query.strip():
+            continue
+        results = store.query(query, top_k=top_k, tags=tags)
+        if not results:
+            print("No results")
+            continue
+        for i, res in enumerate(results, 1):
+            print(f"[{i}] (score {res['score']:.3f}) {res['text'][:120]}…")
+
+
+def cmd_shell(args) -> None:
+    """Run interactive shell on a capsule store."""
+    if os.path.exists(f"{args.store}.json"):
+        store = CapsuleStore()
+        store.load(args.store)
+    else:
+        if args.auto_model:
+            store = create_store_with_best_local_model(device=args.device)
+        else:
+            store = CapsuleStore(device=args.device)
+            # Empty store; warn user
+            print("Warning: created empty store – queries will return nothing until you ingest data.")
+    _run_repl(store, top_k=args.top_k, tags=args.tags)
+
+
+def cmd_stats(args) -> None:
+    """Generate simple statistics from a JSONL log produced by sigla.log."""
+    if not os.path.isfile(args.log):
+        print(f"Log file not found: {args.log}")
+        return
+    counts: dict[str, int] = {}
+    queries: dict[str, int] = {}
+    with open(args.log, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            etype = ev.get("type", "unknown")
+            counts[etype] = counts.get(etype, 0) + 1
+            if etype in {"search", "ask"}:
+                q = ev.get("query", "")
+                if q:
+                    queries[q] = queries.get(q, 0) + 1
+
+    print("Event counts:")
+    for t, c in sorted(counts.items(), key=lambda x: -x[1]):
+        print(f"  {t:10}: {c}")
+
+    if queries:
+        print("\nTop queries:")
+        for q, n in sorted(queries.items(), key=lambda x: -x[1])[:10]:
+            print(f"  {n:4} × {q}")
+
+
 # -----------------------------------------------------------------------------
 # Clean CLI entry (rewritten – fixes previous merge conflicts)
 # -----------------------------------------------------------------------------
@@ -315,7 +514,16 @@ def main() -> None:  # noqa: D401
     ingest_parser.add_argument("--local-model")
     ingest_parser.add_argument("--auto-model", action="store_true")
     ingest_parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
+    ingest_parser.add_argument("--batch-size", "-b", type=int, default=256, help="Number of capsules per add batch (streaming ingest)")
     ingest_parser.set_defaults(func=cmd_ingest)
+
+    # ------------------------------------------------------ remote-ingest
+    rem_parser = subparsers.add_parser("remote-ingest", help="Send documents to running SIGLA server via /update")
+    rem_parser.add_argument("input", help="Input file or directory")
+    rem_parser.add_argument("--url", default="http://localhost:8000", help="Base URL of SIGLA server")
+    rem_parser.add_argument("--batch-size", "-b", type=int, default=256)
+    rem_parser.add_argument("--token", help="X-API-Key header value")
+    rem_parser.set_defaults(func=cmd_remote_ingest)
 
     # ----------------------------------------------------------------- search
     search_parser = subparsers.add_parser("search", help="Search capsules")
@@ -350,6 +558,15 @@ def main() -> None:  # noqa: D401
     conv_parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps"])
     conv_parser.set_defaults(func=_cmd_convert)
 
+    # ---------------------------------------------------------- hf → gguf
+    hfgguf_parser = subparsers.add_parser("hf-to-gguf", help="Convert HuggingFace checkpoint to GGUF via llama.cpp script")
+    hfgguf_parser.add_argument("model_dir", help="Path to local HF model directory or repository ID")
+    hfgguf_parser.add_argument("--outfile", "-o", help="Destination .gguf file (default: <model>-f16.gguf)")
+    hfgguf_parser.add_argument("--outtype", default="f16", choices=["f32", "f16", "bf16", "q8_0", "auto"], help="Output tensor precision / quantization")
+    hfgguf_parser.add_argument("--vocab-only", action="store_true", help="Export only tokenizer & vocab (tiny file)")
+    hfgguf_parser.add_argument("--script", default="llama.cpp/convert_hf_to_gguf.py", help="Path to llama.cpp conversion script")
+    hfgguf_parser.set_defaults(func=cmd_hf_to_gguf)
+
     # ----------------------------------------------------------- run capsuleg
     run_parser = subparsers.add_parser("run-cg", help="Generate text from .capsulegraph")
     run_parser.add_argument("archive")
@@ -381,6 +598,65 @@ def main() -> None:  # noqa: D401
     module_list = module_sub.add_parser("list", help="List modules")
     
     module_parser.set_defaults(func=cmd_module)
+
+    # ----------------------------------------------------------------- list
+    list_caps_parser = subparsers.add_parser("list", help="List capsules")
+    list_caps_parser.add_argument("--store", "-s", default="capsules")
+    list_caps_parser.add_argument("--limit", "-n", type=int, default=20)
+    list_caps_parser.add_argument("--tags", nargs="*")
+    list_caps_parser.set_defaults(func=cmd_list)
+
+    # --------------------------------------------------------------- capsule
+    cap_parser = subparsers.add_parser("capsule", help="Show capsule by id")
+    cap_parser.add_argument("id", type=int)
+    cap_parser.add_argument("--store", "-s", default="capsules")
+    cap_parser.set_defaults(func=cmd_capsule)
+
+    # -------------------------------------------------------------- compress
+    comp_parser = subparsers.add_parser("compress", help="Summarize retrieved capsules")
+    comp_parser.add_argument("query")
+    comp_parser.add_argument("--store", "-s", default="capsules")
+    comp_parser.add_argument("--top-k", "-k", type=int, default=5)
+    comp_parser.add_argument("--tags", nargs="*")
+    comp_parser.add_argument("--model", default="sshleifer/distilbart-cnn-12-6")
+    comp_parser.set_defaults(func=cmd_compress)
+
+    # ---------------------------------------------------------------- prune
+    prune_parser = subparsers.add_parser("prune", help="Remove capsules by id or tag")
+    prune_parser.add_argument("--store", "-s", default="capsules")
+    prune_parser.add_argument("--ids", help="Comma-separated list of ids to remove")
+    prune_parser.add_argument("--tags", nargs="*", help="Tags filter")
+    prune_parser.set_defaults(func=cmd_prune)
+
+    # -------------------------------------------------------------- reindex
+    reidx_parser = subparsers.add_parser("reindex", help="Rebuild embeddings/index")
+    reidx_parser.add_argument("--store", "-s", default="capsules")
+    reidx_parser.add_argument("--model", help="New embedding model")
+    reidx_parser.add_argument("--factory", help="FAISS index factory string")
+    reidx_parser.set_defaults(func=cmd_reindex)
+
+    # ------------------------------------------------------------------ shell
+    shell_parser = subparsers.add_parser("shell", help="Interactive shell for quick tests")
+    shell_parser.add_argument("--store", "-s", default="capsules")
+    shell_parser.add_argument("--top-k", "-k", type=int, default=5)
+    shell_parser.add_argument("--tags", nargs="*")
+    shell_parser.add_argument("--auto-model", action="store_true", help="Pick best local model if store missing")
+    shell_parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
+    shell_parser.set_defaults(func=cmd_shell)
+
+    # ------------------------------------------------------------------ stats
+    stats_parser = subparsers.add_parser("stats", help="Show statistics for a SIGLA JSONL log")
+    stats_parser.add_argument("log", help="Path to JSONL log file")
+    stats_parser.set_defaults(func=cmd_stats)
+
+    # ----------------------------------------------------------------- abtest
+    ab_parser = subparsers.add_parser("abtest", help="Run A/B evaluation")
+    ab_parser.add_argument("dataset", help="JSON file with questions & answers")
+    ab_parser.add_argument("--store", "-s", default="capsules")
+    ab_parser.add_argument("--top-k", "-k", type=int, default=5)
+    ab_parser.add_argument("--temperature", "-t", type=float, default=1.0)
+    ab_parser.add_argument("--baseline", choices=["echo", "none"], default="echo")
+    ab_parser.set_defaults(func=cmd_abtest)
 
     args = parser.parse_args()
 
@@ -434,6 +710,112 @@ def _cmd_run_cg(args):  # noqa: D401
         )
     text = tok.decode(output[0], skip_special_tokens=True)
     print(text)
+
+
+# -----------------------------------------------------------------------
+# hf → gguf helper
+# -----------------------------------------------------------------------
+
+
+def cmd_hf_to_gguf(args):
+    """Wrapper around llama.cpp's *convert_hf_to_gguf.py* for convenience."""
+
+    script_path = Path(args.script)
+    if not script_path.is_file():
+        print(f"Conversion script not found: {script_path}")
+        sys.exit(1)
+
+    cmd: list[str] = [sys.executable, str(script_path), args.model_dir, "--outtype", args.outtype]
+    if args.vocab_only:
+        cmd.append("--vocab-only")
+    if args.outfile:
+        cmd.extend(["--outfile", args.outfile])
+
+    print("Running:", " ".join(cmd))
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"Conversion failed (code {exc.returncode})")
+        sys.exit(exc.returncode)
+
+
+# -----------------------------------------------------------------------
+# Remote ingest helper
+# -----------------------------------------------------------------------
+
+
+def _read_capsules(path: str) -> List[Dict[str, Any]]:
+    """Utility: read files/dir into capsule dicts (same logic as cmd_ingest)."""
+    caps: list[dict] = []
+    if os.path.isfile(path):
+        if path.endswith(".json"):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                caps = data if isinstance(data, list) else [{"text": json.dumps(data)}]
+        else:
+            with open(path, "r", encoding="utf-8") as f:
+                caps = [{"text": f.read(), "source": path}]
+    elif os.path.isdir(path):
+        for fp in Path(path).rglob("*"):
+            if fp.is_file() and fp.suffix in {".txt", ".md", ".json"}:
+                try:
+                    with open(fp, "r", encoding="utf-8") as f:
+                        caps.append({"text": f.read(), "source": str(fp), "tags": [fp.suffix[1:]]})
+                except Exception:
+                    pass
+    return caps
+
+
+def cmd_remote_ingest(args) -> None:  # noqa: D401
+    """Stream documents to remote SIGLA server using /update endpoint."""
+
+    try:
+        import requests  # type: ignore
+    except ImportError:
+        print("Error: requests package required (pip install requests)")
+        sys.exit(1)
+
+    capsules = _read_capsules(args.input)
+    if not capsules:
+        print("No capsules found to send")
+        sys.exit(1)
+
+    headers = {"Content-Type": "application/json"}
+    if args.token:
+        headers["X-API-Key"] = args.token
+
+    total = len(capsules)
+    batch_size = max(1, args.batch_size)
+
+    # send total once
+    init_resp = requests.post(f"{args.url}/update?total={total}", json=[], headers=headers)
+    if init_resp.status_code >= 300:
+        print(f"Server error: {init_resp.text}")
+        sys.exit(1)
+
+    try:
+        from tqdm import tqdm  # type: ignore
+        pbar = tqdm(total=total, desc="Uploading", unit="caps")
+    except ImportError:
+        pbar = None
+
+    it = iter(capsules)
+    sent = 0
+    while True:
+        batch = list(islice(it, batch_size))
+        if not batch:
+            break
+        resp = requests.post(f"{args.url}/update", json=batch, headers=headers)
+        if resp.status_code >= 300:
+            print(f"Server error: {resp.text}")
+            sys.exit(1)
+        sent += len(batch)
+        if pbar:
+            pbar.update(len(batch))
+
+    if pbar:
+        pbar.close()
+    print(f"Uploaded {sent} capsules to {args.url}")
 
 
 if __name__ == "__main__":

@@ -81,11 +81,19 @@ def INJECT(text: str, store: Optional[CapsuleStore] = None, tags: Optional[List[
         # Return enhanced text with metadata
         return f"[INJECTED AS CAPSULE {capsule_id}] {text}"
     
-    # If no store, just return the text with injection marker
-    return f"[INJECT PLACEHOLDER] {text}"
+    # If no store is provided, simply return the text unchanged – the caller is
+    # responsible for managing persistence in this scenario.
+    return text
 
 
-def EXPAND(capsule: Dict[str, Any], store: CapsuleStore, depth: int = 1, limit: int = 10, algo: str = "bfs") -> List[Dict[str, Any]]:
+def EXPAND(
+    capsule: Dict[str, Any],
+    store: CapsuleStore,
+    depth: int = 1,
+    limit: int = 10,
+    algo: str = "bfs",
+    weight_threshold: float = 0.0,
+) -> List[Dict[str, Any]]:
     """Expand capsule knowledge through graph traversal with multiple algorithms."""
     if not capsule or not store:
         return [capsule] if capsule else []
@@ -95,7 +103,7 @@ def EXPAND(capsule: Dict[str, Any], store: CapsuleStore, depth: int = 1, limit: 
         from .graph import random_walk_links
         return random_walk_links([capsule], store, steps=depth, limit=limit)
     else:
-        return expand_with_links([capsule], store, depth=depth, limit=limit)
+        return expand_with_links([capsule], store, depth=depth, limit=limit, weight_threshold=weight_threshold)
 
 
 def ANALYZE(capsules: List[Dict[str, Any]]) -> Dict[str, Any]:

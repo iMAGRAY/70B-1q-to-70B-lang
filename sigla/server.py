@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from typing import List, Optional
+from typing import List, Optional, Any
+import asyncio
 
 # ---------------------------------------------------------------------------
 # Optional FastAPI import – graceful fallback when dependency missing.
@@ -18,7 +19,7 @@ except ImportError:  # pragma: no cover – FastAPI not installed
 
 # Prometheus metrics (optional)
 try:
-    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST  # type: ignore
+    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST, Gauge  # type: ignore
     PROM_AVAILABLE = True
 except ImportError:  # pragma: no cover – prometheus_client not installed
     PROM_AVAILABLE = False
@@ -31,8 +32,12 @@ except ImportError:  # pragma: no cover – prometheus_client not installed
                 pass
             def observe(self, *_):
                 pass
+            def set(self, *_):
+                pass
         return _Dummy()
     def Histogram(*_a, **_kw):  # type: ignore
+        return Counter()
+    def Gauge(*_a, **_kw):  # type: ignore
         return Counter()
 
 # ---------------------------------------------------------------------------
@@ -57,6 +62,11 @@ REQUEST_LATENCY = Histogram(
     ["endpoint"],
 ) if PROM_AVAILABLE else Histogram("noop", "", ["endpoint"])
 
+CAPSULE_TOTAL = Gauge(
+    "sigla_capsules_total",
+    "Total number of capsules in store",
+) if PROM_AVAILABLE else Gauge("noop", "")
+
 # ---------------------------------------------------------------------------
 # Global state
 # ---------------------------------------------------------------------------
@@ -64,6 +74,12 @@ REQUEST_LATENCY = Histogram(
 store: CapsuleStore | None = None
 index_path: str = ""
 API_KEY_ENV = "SIGLA_API_KEY"
+# auto-reindex settings
+REINDEX_THRESHOLD = 500  # capsules added
+_added_since_reindex = 0
+_ingest_total = 0
+_ingest_done = 0
+_event_subscribers: list[Any] = []
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +112,8 @@ def create_server():
         if os.path.exists(index_path + ".index"):
             local_store.load(index_path)
             store = local_store
+        if store is not None:
+            CAPSULE_TOTAL.set(len(store.meta))
         yield
 
     # Create app
@@ -139,21 +157,57 @@ def create_server():
         return results
 
     @app.get("/ask")
-    def ask(query: str, top_k: int = 5, tags: str | None = None, temperature: float = 1.0):
+    def ask(
+        query: str,
+        top_k: int = 5,
+        tags: str | None = None,
+        temperature: float = 1.0,
+        min_score: float = 0.35,
+        fallback: str = "echo",  # echo|none
+        kv: bool = False,  # when true, include token ids for KV-cache style injection
+    ):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(",") if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
-        merged = merge_capsules(results, temperature=temperature)
+        
+        # Confidence check
+        low_conf = not results or (results and results[0].get("score", 0.0) < min_score)
+
+        if low_conf and fallback == "echo":
+            merged = query  # simplest fallback – pass the user query itself
+        else:
+            merged = merge_capsules(results, temperature=temperature)
+
+        # Prepare token ids if requested
+        token_ids: list[int] | None = None
+        if kv:
+            try:
+                from transformers import AutoTokenizer  # type: ignore
+                tok = AutoTokenizer.from_pretrained(store.model_name.replace("local:", ""))
+                token_ids = tok(merged, add_special_tokens=False)["input_ids"]  # type: ignore[index]
+            except Exception:
+                # Fallback – return UTF-8 bytes as ints if tokenizer unavailable
+                token_ids = list(merged.encode("utf-8"))
+
+        # KV flag currently informational – downstream client may use it
+        context_payload = {
+            "context": merged,
+            "low_conf": low_conf,
+            "kv": kv,
+            "tokens": token_ids,
+        }
         siglog.log({
             "type": "ask",
             "query": query,
             "top_k": top_k,
             "tags": tag_list,
             "temperature": temperature,
+            "min_score": min_score,
+            "low_conf": low_conf,
             "context": merged,
         })
-        return {"context": merged}
+        return context_payload
 
     @app.get("/capsule/{idx}")
     def get_capsule(idx: int, _auth: bool = Depends(require_api_key)):
@@ -164,14 +218,47 @@ def create_server():
         return store.meta[idx]
 
     @app.post("/update")
-    def update_capsules(capsules: List[dict], _auth: bool = Depends(require_api_key)):
+    def update_capsules(
+        capsules: List[dict],
+        total: int | None = None,
+        _auth: bool = Depends(require_api_key),
+    ):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
+        global _added_since_reindex, _ingest_total, _ingest_done
+
+        # If client sends total count once – reset counters
+        if total is not None and total > 0:
+            _ingest_total = total
+            _ingest_done = 0
+
         store.add_capsules(capsules)
+        _added_since_reindex += len(capsules)
+        _ingest_done += len(capsules)
+
+        # notify stream listeners – include progress if known
+        payload = {"event": "update", "added": len(capsules)}
+        if _ingest_total > 0:
+            pct = int(100 * _ingest_done / _ingest_total)
+            payload.update({"progress": pct})
+        _broadcast(payload)
+
         if index_path:
             store.save(index_path)
+        # auto reindex if threshold exceeded
+        if _added_since_reindex >= REINDEX_THRESHOLD:
+            import threading
+            def _rebuild():
+                if store is None:
+                    return
+                store.rebuild_index()
+                store.save(index_path)
+                _broadcast({"event": "reindex"})
+            threading.Thread(target=_rebuild, daemon=True).start()
+            _added_since_reindex = 0
         siglog.log({"type": "update", "added": len(capsules)})
-        return {"added": len(capsules)}
+        CAPSULE_TOTAL.set(len(store.meta))
+        return {"added": len(capsules), "progress": payload.get("progress")}
 
     @app.get("/info")
     def info():
@@ -200,6 +287,7 @@ def create_server():
         top_k: int = 5,
         depth: int = 1,
         limit: int = 10,
+        wt: float = 0.0,
         tags: str | None = None,
         algo: str = "bfs",
         restart: float = 0.5,
@@ -214,7 +302,7 @@ def create_server():
                 results, store, steps=depth, restart=restart, limit=limit
             )
         else:
-            expanded = expand_with_links(results, store, depth=depth, limit=limit)
+            expanded = expand_with_links(results, store, depth=depth, limit=limit, weight_threshold=wt)
         siglog.log({
             "type": "walk",
             "query": query,
@@ -271,6 +359,7 @@ def create_server():
         removed = store.remove_capsules(to_remove)
         if index_path:
             store.save(index_path)
+        CAPSULE_TOTAL.set(len(store.meta))
         
         siglog.log({"type": "prune", "removed": removed})
         return {"removed": removed}
@@ -284,8 +373,27 @@ def create_server():
         if index_path:
             store.save(index_path)
         
+        CAPSULE_TOTAL.set(len(store.meta))
         siglog.log({"type": "reindex", "model": model, "factory": factory})
         return {"message": "Index rebuilt successfully"}
+
+    @app.get("/events")
+    async def events():
+        from starlette.responses import StreamingResponse
+        queue: asyncio.Queue[str] = asyncio.Queue()  # type: ignore
+        _event_subscribers.append(queue)
+
+        async def event_gen():
+            try:
+                while True:
+                    data = await queue.get()
+                    yield data
+            except asyncio.CancelledError:
+                pass
+            finally:
+                _event_subscribers.remove(queue)
+
+        return StreamingResponse(event_gen(), media_type="text/event-stream")
 
     return app
 
@@ -329,3 +437,19 @@ def cli() -> None:
 
 if __name__ == "__main__":
     cli()
+
+# ---------------------------------------------------------------------------
+# SSE broadcast helper
+# ---------------------------------------------------------------------------
+
+def _broadcast(message: dict[str, Any]):
+    """Send JSON-encoded message to all active SSE subscribers."""
+    if not _event_subscribers:
+        return
+    import json
+    data = f"data: {json.dumps(message, ensure_ascii=False)}\n\n"
+    for q in list(_event_subscribers):
+        try:
+            q.put_nowait(data)
+        except Exception:
+            pass

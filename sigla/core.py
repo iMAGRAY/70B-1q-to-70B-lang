@@ -43,6 +43,26 @@ except ImportError:
 
 import numpy as np
 
+# Optional llama-cpp for GGUF embeddings
+try:
+    from llama_cpp import Llama  # type: ignore
+except ImportError:
+    Llama = None
+
+# Optional Prometheus metrics -------------------------------------------------
+try:
+    from prometheus_client import Counter as _PromCounter, Histogram as _PromHist  # type: ignore
+    _METRIC_CACHE_HIT = _PromCounter("sigla_emb_cache_hits", "Embedding cache hits")
+    _METRIC_CACHE_MISS = _PromCounter("sigla_emb_cache_miss", "Embedding cache misses")
+    _METRIC_QUERY_LAT = _PromHist("sigla_query_latency_seconds", "CapsuleStore.query latency")
+except ImportError:  # pragma: no cover
+    class _Dummy:
+        def inc(self, *_):
+            pass
+        def observe(self, *_):
+            pass
+    _METRIC_CACHE_HIT = _METRIC_CACHE_MISS = _METRIC_QUERY_LAT = _Dummy()
+
 
 class MissingDependencyError(Exception):
     """Raised when optional dependency is missing but required for operation."""
@@ -119,6 +139,53 @@ class TransformersEmbeddings:
         return self.model.config.hidden_size
 
 
+class GGUFEmbeddings:  # noqa: D101 – simple thin wrapper
+    """Sentence embedding wrapper for *gguf* models via **llama-cpp-python**.
+
+    The implementation is intentionally lightweight: we instantiate
+    ``llama_cpp.Llama`` in *embedding* mode and call its ``embed`` method for
+    each text.  This avoids dependencies on the Transformers stack and works
+    fully offline.  Requires **llama-cpp-python>=0.2.11**.
+    """
+
+    def __init__(self, model_path: str, n_ctx: int = 2048):
+        if Llama is None:
+            raise MissingDependencyError("llama-cpp-python", "GGUF embeddings")
+
+        # We request embeddings=True so llama.cpp allocates the KV-cache for it
+        # only once.  A context of 2 048 tokens is more than enough for
+        # typical capsules (< 1 k tokens).
+        self.llama = Llama(model_path=model_path, embedding=True, n_ctx=n_ctx)
+
+        # Warm-up call to discover the embedding dimension
+        dummy = self.llama.embed("hello world")
+        import numpy as _np  # local
+        self._dim = len(dummy) if dummy else 0
+
+    # ------------------------------------------------------------------ API
+
+    def encode(self, texts: List[str], batch_size: int = 16, convert_to_numpy: bool = True):  # noqa: D401
+        """Return embeddings for *texts* (optionally as NumPy array)."""
+
+        import numpy as _np  # local import – avoid mandatory dependency at top
+
+        # Prefer the batched embedding API when present (llama.cpp ≥ 0.2.12)
+        try:
+            # create_embedding returns an OpenAI-style payload
+            emb_resp = self.llama.create_embedding(texts)
+            vecs = [d["embedding"] for d in emb_resp["data"]]  # type: ignore[index]
+        except Exception:  # fallback to single calls (older versions)
+            vecs = [self.llama.embed(t) for t in texts]
+
+        if convert_to_numpy:
+            return _np.array(vecs, dtype="float32")
+        return vecs  # type: ignore[return-value]
+
+    # NOTE: kept for compatibility with SentenceTransformer/GTE API
+    def get_sentence_embedding_dimension(self) -> int:  # noqa: D401
+        return self._dim
+
+
 class CapsuleStore:
     """A lightweight FAISS-backed capsule database.
 
@@ -153,11 +220,18 @@ class CapsuleStore:
         self.index_factory = index_factory
         self.auto_link_k = auto_link_k
         self.meta: List[Dict[str, Any]] = []
+        # Simple in-memory cache: text → embedding (np.ndarray). Helps
+        # when the same snippet ingested several times or queried for
+        # auto-links/queries.
+        self._emb_cache: Dict[str, "np.ndarray"] = {}
 
         # Initialize model based on type
         if model_name.startswith("local:"):
             local_path = model_name[6:]
-            self.model = TransformersEmbeddings(local_path, device=device)
+            if local_path.endswith(".gguf") or local_path.endswith(".ggml"):
+                self.model = GGUFEmbeddings(local_path)
+            else:
+                self.model = TransformersEmbeddings(local_path, device=device)
             self.dimension = self.model.get_sentence_embedding_dimension()
         else:
             if SentenceTransformer is None:
@@ -167,6 +241,21 @@ class CapsuleStore:
 
         # Initialize empty FAISS index
         self.index = faiss.index_factory(self.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
+
+        # -------------------------------------------------- optional GPU
+        self._gpu = False
+        if device in {"cuda", "auto"}:
+            try:
+                ngpu = faiss.get_num_gpus()
+            except AttributeError:
+                ngpu = 0
+            if ngpu > 0 and (device == "cuda" or device == "auto"):
+                res = faiss.StandardGpuResources()
+                try:
+                    self.index = faiss.index_cpu_to_gpu(res, 0, self.index)
+                    self._gpu = True
+                except Exception:  # pragma: no cover – GPU may be busy or unsupported
+                    self._gpu = False
 
     def add_capsules(
         self,
@@ -194,11 +283,20 @@ class CapsuleStore:
         # Compute embeddings if not provided
         if vectors is None:
             texts = [c["text"] for c in capsules]
-            vectors = self.model.encode(texts, convert_to_numpy=True)
 
-        import numpy as np  # local import to avoid hard dep in type stubs
-        if not isinstance(vectors, np.ndarray):  # type: ignore[comparison-overlap]
-            raise TypeError("vectors must be a numpy.ndarray")
+            # ----------------------------------------------------------------
+            # Embedding cache: compute only for unseen texts
+            # ----------------------------------------------------------------
+            missing_texts = [t for t in texts if t not in self._emb_cache]
+            if missing_texts:
+                new_vecs = self.model.encode(missing_texts, convert_to_numpy=True)
+                for t, v in zip(missing_texts, new_vecs):
+                    self._emb_cache[t] = v
+                _METRIC_CACHE_MISS.inc(len(missing_texts))
+            _METRIC_CACHE_HIT.inc(len(texts) - len(missing_texts))
+
+            import numpy as np  # local
+            vectors = np.vstack([self._emb_cache[t] for t in texts])
 
         if vectors.shape[0] != len(capsules):
             raise ValueError("vectors.shape[0] must match len(capsules)")
@@ -228,6 +326,15 @@ class CapsuleStore:
         # Get vectors for new capsules
         new_texts = [self.meta[i]["text"] for i in range(start_idx, start_idx + count)]
         new_vectors = self.model.encode(new_texts, convert_to_numpy=True)
+        missing_texts = [t for t in new_texts if t not in self._emb_cache]
+        if missing_texts:
+            new_vecs = self.model.encode(missing_texts, convert_to_numpy=True)
+            for t, v in zip(missing_texts, new_vecs):
+                self._emb_cache[t] = v
+            _METRIC_CACHE_MISS.inc(len(missing_texts))
+            _METRIC_CACHE_HIT.inc(len(new_texts) - len(missing_texts))
+
+        new_vectors = np.vstack([self._emb_cache[t] for t in new_texts])
         faiss.normalize_L2(new_vectors)
 
         # For each new capsule, find similar existing capsules
@@ -238,6 +345,15 @@ class CapsuleStore:
             for j, sim_idx in enumerate(indices[0]):
                 if sim_idx != idx and sim_idx >= 0:
                     self.meta[idx]["links"].append(int(sim_idx))
+                    # Store similarity score as weight
+                    w_list = self.meta[idx].setdefault("weights", [])
+                    w_list.append(float(scores[0][j]))
+                    # add reciprocal link
+                    back_links = self.meta[sim_idx].setdefault("links", [])
+                    back_weights = self.meta[sim_idx].setdefault("weights", [])
+                    if idx not in back_links:
+                        back_links.append(idx)
+                        back_weights.append(float(scores[0][j]))
 
     def save(self, path: str):
         """Save the index and metadata to disk."""
@@ -246,36 +362,64 @@ class CapsuleStore:
             json.dump(
                 {
                     "model": self.model_name,
-                    "factory": self.index_factory,
+                    "dimension": self.dimension,
+                    "index_factory": self.index_factory,
                     "auto_link_k": self.auto_link_k,
                     "meta": self.meta,
+                    "device": self.device,
                 },
                 f,
                 ensure_ascii=False,
                 indent=2,
             )
 
+        # ------------------------------------------------- persist cache
+        if self._emb_cache:
+            import numpy as _np  # local
+            texts = _np.array(list(self._emb_cache.keys()), dtype=object)
+            vecs = _np.vstack(list(self._emb_cache.values()))
+            _np.savez_compressed(path + ".cache.npz", texts=texts, vecs=vecs)
+
     def load(self, path: str):
         """Load the index and metadata from disk."""
         self.index = faiss.read_index(path + ".index")
         with open(path + ".json", "r", encoding="utf-8") as f:
             data = json.load(f)
-            self.meta = data["meta"]
-            self.model_name = data.get("model", self.model_name)
-            self.index_factory = data.get("factory", "Flat")
+            self.model_name = data["model"]
+            self.dimension = data["dimension"]
+            self.index_factory = data["index_factory"]
             self.auto_link_k = data.get("auto_link_k", 0)
+            self.meta = data["meta"]
+            self.device = data.get("device", "cpu")
+
+        # --------------------------------------------- load cache if exists
+        cache_file = path + ".cache.npz"
+        if os.path.exists(cache_file):
+            import numpy as _np  # local
+            npz = _np.load(cache_file, allow_pickle=True)
+            texts = list(npz["texts"])
+            vecs = npz["vecs"]
+            self._emb_cache = {t: vecs[i] for i, t in enumerate(texts)}
 
         # Re-initialize the model
         if self.model_name.startswith("local:"):
             local_path = self.model_name[6:]
-            self.model = TransformersEmbeddings(local_path, device=self.device)
+            if local_path.endswith(".gguf") or local_path.endswith(".ggml"):
+                self.model = GGUFEmbeddings(local_path)
+            else:
+                self.model = TransformersEmbeddings(local_path, device=self.device)
         else:
             if SentenceTransformer is None:
                 raise MissingDependencyError("sentence-transformers package is required")
             self.model = SentenceTransformer(self.model_name)
 
     def query(self, text: str, top_k: int = 5, tags: List[str] | None = None) -> List[Dict[str, Any]]:
-        """Return top matching capsules, optionally filtering by tags."""
+        """Query the store and return top-k similar capsules."""
+        import time as _time  # local
+        _t0 = _time.perf_counter()
+        if not self.meta:
+            return []
+
         vector = self.model.encode([text], convert_to_numpy=True)
         faiss.normalize_L2(vector)
         # oversample to account for tag filtering
@@ -293,6 +437,8 @@ class CapsuleStore:
             results.append(cap)
             if len(results) >= top_k:
                 break
+
+        _METRIC_QUERY_LAT.observe(_time.perf_counter() - _t0)
         return results
 
     def remove_capsules(self, ids: List[int]) -> int:
@@ -331,29 +477,28 @@ class CapsuleStore:
         if model_name and model_name != self.model_name:
             if model_name.startswith("local:"):
                 local_path = model_name[6:]
-                self.model = TransformersEmbeddings(local_path, device=self.device)
-            else:
-                if SentenceTransformer is None:
-                    raise MissingDependencyError("sentence-transformers package is required")
-                self.model = SentenceTransformer(model_name)
-            self.model_name = model_name
-            self.dimension = self.model.get_sentence_embedding_dimension()
+                if local_path.endswith(".gguf") or local_path.endswith(".ggml"):
+                    self.model = GGUFEmbeddings(local_path)
+                else:
+                    self.model = TransformersEmbeddings(local_path, device=self.device)
+                self.model_name = model_name
+                self.dimension = self.model.get_sentence_embedding_dimension()
             
-        if index_factory:
-            self.index_factory = index_factory
+            if index_factory:
+                self.index_factory = index_factory
             
-        texts = [m["text"] for m in self.meta]
-        vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
-        self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
-        if vectors is not None and len(texts) > 0:
-            faiss.normalize_L2(vectors)
-            if not self.index.is_trained:
-                self.index.train(vectors)
-            self.index.add(vectors)
+            texts = [m["text"] for m in self.meta]
+            vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
+            self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
+            if vectors is not None and len(texts) > 0:
+                faiss.normalize_L2(vectors)
+                if not self.index.is_trained:
+                    self.index.train(vectors)
+                self.index.add(vectors)
         
-        for idx, meta in enumerate(self.meta):
-            meta["id"] = idx
-        # Finished rebuild_index
+            for idx, meta in enumerate(self.meta):
+                meta["id"] = idx
+            # Finished rebuild_index
 
     def add_capsule(self, text: str, tags: Optional[List[str]] | None = None) -> int:
         """Add a single *text* capsule and return its assigned ID."""
@@ -402,7 +547,10 @@ class CapsuleStore:
 
         instance.device = device
         instance.model_name = f"local:{model_path}"
-        instance.model = TransformersEmbeddings(model_path, device=device)
+        if model_path.endswith(".gguf") or model_path.endswith(".ggml"):
+            instance.model = GGUFEmbeddings(model_path)
+        else:
+            instance.model = TransformersEmbeddings(model_path, device=device)
         instance.dimension = instance.model.get_sentence_embedding_dimension()
         instance.index_factory = index_factory
         instance.index = faiss.index_factory(instance.dimension, index_factory, faiss.METRIC_INNER_PRODUCT)
@@ -423,9 +571,17 @@ def get_available_local_models(base_dir: str | Path | str = "./models") -> List[
     if not base.exists():
         return []
     candidates: List[str] = []
+
     for path in base.iterdir():
+        # 1. HuggingFace-style directory with *config.json*
         if path.is_dir() and (path / "config.json").exists():
             candidates.append(str(path))
+            continue
+
+        # 2. Single-file *gguf/ggml* weights that can be used via llama.cpp
+        if path.is_file() and (path.suffix in {".gguf", ".ggml"}):
+            candidates.append(str(path))
+
     return candidates
 
 

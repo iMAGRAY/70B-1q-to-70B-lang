@@ -1,9 +1,7 @@
 # SIGLA Development Roadmap (Revisited)
 This roadmap prioritizes low-cost local solutions. Large proprietary models and expensive servers are avoided or used only for occasional offline preprocessing.
 
-
-This version updates the initial roadmap after reviewing several unrealistic
-assumptions.
+This version updates the initial roadmap after reviewing several unrealistic assumptions.
 
 ## Key issues found
 - **Raw logs from 70B** – storing complete answers is expensive and risks data leaks. Only short, sanitized capsules will be kept.
@@ -11,6 +9,8 @@ assumptions.
 - **Graph-based retrieval by default** – building a CapsuleGraph from day one complicates the system. Start with simple kNN retrieval and expand later.
 - **Autoencoder compression** – training an autoencoder requires additional data and tuning. Using an LLM summarizer is simpler early on.
 - **Direct KV-cache injection** – depends on the serving stack. Prompt injection is the stable method while KV experiments run in parallel.
+
+## 1. Data Collection & Preparation
 1. **Collect Intent List**
    - Brainstorm common themes, questions and tasks the system must handle.
    - Classify each intent by expected value and complexity.
@@ -22,27 +22,17 @@ assumptions.
 4. **Embedding and Storage**
    - Use efficient open-source embedding models (e.g., E5 or Llama2-based).
    - Verify critical capsules by comparing with 70B embeddings when possible.
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
    - Store vectors and metadata (source, tags, quality rating) in a FAISS index. Use `Flat` by default but allow `HNSW` or `IVF` factories for larger datasets.
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-   - Store vectors and metadata (source, tags, quality rating) in a FAISS index.
-=======
-   - Store vectors and metadata (source, tags, quality rating) in a FAISS index. Use `Flat` by default but allow `HNSW` or `IVF` factories for larger datasets.
-main
-main
 
 ## 2. SIGLA Core
 1. **Embedding Requests**
    - Convert user questions into intent vectors using the chosen model.
 2. **Retrieval Pipeline**
    - Query FAISS for nearest capsules (kNN).
-   - Once basic retrieval quality is measured, optionally expand results using
-     a CapsuleGraph.
+   - Once basic retrieval quality is measured, optionally expand results using a CapsuleGraph.
 3. **Capsule Fusion**
    - Weight capsules by relevance and connection strength.
-   - Combine a small set of capsules into a single capsule-thought with soft
-     attention. Adjust the number dynamically based on token budget.
+   - Combine a small set of capsules into a single capsule-thought with soft attention. Adjust the number dynamically based on token budget.
 4. **Interface Functions**
    - Expose operations like `embed_query`, `retrieve_capsules`, and `merge_capsules` as part of a Python module.
    - Initial version implemented in `sigla/core.py` with a FAISS-backed `CapsuleStore`.
@@ -53,16 +43,14 @@ main
    - Keep total prompt length below model limits.
 2. **KV-Cache Method (Experimental)**
    - Only if the serving framework exposes a stable API for KV injection.
-   - Convert capsule vectors to the required tensor format and prepend them
-     before the user's question.
+   - Convert capsule vectors to the required tensor format and prepend them before the user's question.
 3. **Choosing a Strategy**
    - Start with prompt injection for rapid iteration.
    - Introduce cache-based injection for efficiency once the pipeline is stable.
 
 ## 4. Improving Retrieval and Reasoning
 1. **Graph-Based Expansion (Optional)**
-   - When simple retrieval misses context, build a CapsuleGraph linking related
-     capsules.
+   - When simple retrieval misses context, build a CapsuleGraph linking related capsules.
    - Explore random walk or BFS to gather supporting capsules.
 2. **Capsule Compression**
    - Summarize dense capsules with an LLM instead of training a custom autoencoder.
@@ -87,11 +75,9 @@ main
 2. **Model Connectors**
    - Run local models using CPU-friendly tools like `llama.cpp` or `ggml`. Avoid renting expensive servers.
    - Provide optional adapters for external APIs like Claude or GPT-4 only if the budget allows.
-   
 3. **Monitoring and Fallbacks**
    - Track latency, number of retrieved capsules, and token count.
-   - If retrieval confidence is low, optionally query the model directly or use
-     a simpler RAG step.
+   - If retrieval confidence is low, optionally query the model directly or use a simpler RAG step.
 
 ## 7. Evaluation and Iteration
 1. **A/B Testing**
@@ -102,6 +88,7 @@ main
 3. **Security Checks**
    - Filter sensitive or unwanted content in capsules.
    - Ensure no personal data from user queries is stored without consent.
+
 ## Reality Check
 - Ensure each step can run on commodity hardware (CPU or single consumer GPU).
 - Keep prompts and capsule storage small to control disk and memory use.
@@ -118,14 +105,7 @@ main
 - `sigla/dsl.py` implements INTENT/RETRIEVE/MERGE/INJECT helpers for prompt construction.
 - Capsules now receive persistent `id`s and an optional `links` field for building a graph.
 - Graph expansion is provided via `sigla.graph.expand_with_links` and the CLI `walk` command.
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
 - Random walk retrieval is implemented via `sigla.graph.random_walk_links` and selectable in the CLI `walk` command.
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-=======
-- Random walk retrieval is implemented via `sigla.graph.random_walk_links` and selectable in the CLI `walk` command.
-main
-main
 - The DSL exposes `EXPAND` for link-based retrieval.
 - `sigla/log.py` enables optional JSONL query logging for both the CLI and server.
 - `sigla/scripts.py` now includes an interactive `shell` command for quick manual tests.
@@ -136,20 +116,10 @@ main
 - `sigla/scripts.py` can list stored capsules via the `list` command.
 - `sigla/scripts.py` can remove capsules via the `prune` command.
 - `sigla/scripts.py` can summarize retrieved capsules via the `compress` command.
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
 - `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
-- `sigla/scripts.py` can append capsules via the `update` command; the server
-  exposes `/update` for the same purpose.
+- `sigla/scripts.py` can append capsules via the `update` command; the server exposes `/update` for the same purpose.
 - Ingestion and reindexing support custom FAISS index factories via `--factory`.
-- `inject` and `shell` commands, as well as the `/ask` endpoint, accept a
-  `temperature` parameter controlling how capsules are merged.
+- `inject` and `shell` commands, as well as the `/ask` endpoint, accept a `temperature` parameter controlling how capsules are merged.
 - The API exposes `/info` and `/list` endpoints mirroring the CLI commands.
 - `/walk` and `/compress` endpoints support graph expansion and summarization.
 - `/prune` and `/reindex` endpoints mirror CLI commands for capsule removal and index rebuilding.
-=======
-xvy4pj-codex/разработать-sigla-для-моделирования-мышления
-=======
-- `sigla/scripts.py` can rebuild embeddings via the `reindex` command.
-- Ingestion and reindexing support custom FAISS index factories via `--factory`.
-main
-main
