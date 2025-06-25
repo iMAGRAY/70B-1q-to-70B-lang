@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 try:
+TrainingStart
+    from fastapi import FastAPI, HTTPException
+    FASTAPI_AVAILABLE = True
+except Exception:  # pragma: no cover - optional dependency
+    FastAPI = None
+    HTTPException = None
+    FASTAPI_AVAILABLE = False
+=======
     from fastapi import FastAPI, HTTPException, Depends
 except Exception:  # pragma: no cover - optional dependency
     FastAPI = None
@@ -9,11 +17,16 @@ except Exception:  # pragma: no cover - optional dependency
             super().__init__(*args)
     def Depends(*args, **kwargs):
         return lambda: True
+ main
 
 from typing import List, Optional
 import argparse
 import os
 
+ TrainingStart
+from .core import CapsuleStore, merge_capsules, compress_capsules, MissingDependencyError
+from .graph import expand_with_links, random_walk_links
+=======
 from . import log as siglog
 from .core import (
     CapsuleStore,
@@ -34,6 +47,7 @@ def _require_api_key():
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
+main
 
 if FastAPI:
     app = FastAPI(title="SIGLA Server")
@@ -80,6 +94,9 @@ if app:
         tag_list = tags.split(",") if tags else None
         results = store.query(query, top_k=top_k, tags=tag_list)
         merged = merge_capsules(results, temperature=temperature)
+TrainingStart
+        siglog.log({"type": "ask", "query": query, "top_k": top_k, "tags": tag_list, "temperature": temperature, "context": merged})
+=======
         siglog.log(
             {
                 "type": "ask",
@@ -90,6 +107,7 @@ if app:
                 "context": merged,
             }
         )
+main
         return {"context": merged}
 
     @app.get("/capsule/{idx}")
@@ -251,12 +269,17 @@ if app:
         )
         return {"model": store.model_name, "factory": store.index_factory}
 
+ TrainingStart
+
+def cli():
+=======
 # ---------------------------------------------------------------------------
 # CLI wrapper (uvicorn)
 # ---------------------------------------------------------------------------
 
 def cli() -> None:
     """Запускает FastAPI-сервер через uvicorn."""
+ main
     parser = argparse.ArgumentParser(description="Run SIGLA API server")
     parser.add_argument("index_path", help="Path prefix of the FAISS index")
     parser.add_argument("--host", default="127.0.0.1")
