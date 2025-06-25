@@ -138,7 +138,7 @@ def cmd_list_models(args) -> None:
         print("\nTo use local models:")
         print("1. Download model files to a directory")
         print("2. Ensure the directory contains config.json and model files")
-        print("3. Use --local-model <path> or --auto-model")
+        print("3. Use --local_model <path> or --auto_model")
         return
     
     print(f"Found {len(models)} local models:")
@@ -186,164 +186,158 @@ def cmd_serve(args) -> None:
     uvicorn.run(app, host="0.0.0.0", port=args.port)
 
 
-def cmd_dsl(args) -> None:
-    """Run DSL commands."""
-    if not args.store or not os.path.exists(f"{args.store}.json"):
-        print("Error: Store is required for DSL commands")
-        sys.exit(1)
-    
-    store = CapsuleStore()
-    store.load(args.store)
-    
-    if args.command == "intent":
-        result = INTENT(args.text)
-        print(f"Intent: {result}")
-    
-    elif args.command == "retrieve":
-        results = RETRIEVE(args.text, store, top_k=args.top_k)
-        print(f"Retrieved {len(results)} capsules:")
-        for i, cap in enumerate(results, 1):
-            print(f"  {i}. {cap['text'][:100]}...")
-    
-    elif args.command == "merge":
-        results = RETRIEVE(args.text, store, top_k=args.top_k)
-        merged = MERGE(results)
-        print(f"Merged result:\n{merged}")
-    
-    elif args.command == "inject":
-        result = INJECT(args.text, store)
-        print(f"Injected capsule ID: {result}")
-    
-    elif args.command == "expand":
-        results = RETRIEVE(args.text, store, top_k=3)
-        if results:
-            expanded = EXPAND(results[0], store)
-            print(f"Expanded with {len(expanded)} related capsules")
-            for cap in expanded:
-                print(f"  - {cap['text'][:100]}...")
+def prune_capsules(index_path: str, ids: list[int] | None = None, tags: list[str] | None = None) -> None:
+    """Remove capsules by id or tags and rebuild the index."""
+    try:
+        store = CapsuleStore()
+        store.load(index_path)
+    except MissingDependencyError as e:
+        print(f"error: {e}")
+        return
+    remove_set: set[int] = set(ids or [])
+    if tags:
+        for i, meta in enumerate(store.meta):
+            if set(tags).intersection(meta.get("tags", [])):
+                remove_set.add(i)
+    if not remove_set:
+        print("no matching capsules")
+        return
+    removed = store.remove_capsules(sorted(remove_set))
+    store.save(index_path)
+    siglog.log({"type": "prune", "removed": removed, "ids": sorted(remove_set), "tags": tags})
+    print(f"removed {removed} capsules")
 
 
-def main() -> None:
-    """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description="SIGLA - Semantic Information Graph with Language Agents")
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    
+def reindex_store(index_path: str, model: str | None = None, factory: str | None = None) -> None:
+    """Rebuild embeddings for all capsules, optionally with a new model or index type."""
+    try:
+        store = CapsuleStore()
+        store.load(index_path)
+    except MissingDependencyError as e:
+        print(f"error: {e}")
+        return
+    store.rebuild_index(model, factory)
+    store.save(index_path)
+    siglog.log({"type": "reindex", "model": model or store.model_name})
+    print("index rebuilt")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SIGLA utility")
+    subparsers = parser.add_subparsers(dest="cmd", required=True)
+    parser.add_argument("--log-file")
+
     # Ingest command
-    ingest_parser = subparsers.add_parser("ingest", help="Ingest documents")
-    ingest_parser.add_argument("input", help="Input file or directory")
-    ingest_parser.add_argument("-o", "--output", default="capsules", help="Output store name")
-    ingest_parser.add_argument("-m", "--model", default="sentence-transformers/all-MiniLM-L6-v2", 
-                               help="Model name")
-    ingest_parser.add_argument("--local-model", help="Path to local model directory")
-    ingest_parser.add_argument("--auto-model", action="store_true", 
-                               help="Automatically use best available local model")
-    ingest_parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"],
-                               help="Device to use")
-    ingest_parser.set_defaults(func=cmd_ingest)
-    
-    # Search command
-    search_parser = subparsers.add_parser("search", help="Search capsules")
-    search_parser.add_argument("query", help="Search query")
-    search_parser.add_argument("-s", "--store", default="capsules", help="Store name")
-    search_parser.add_argument("-k", "--top-k", type=int, default=5, help="Number of results")
-    search_parser.add_argument("-t", "--tags", nargs="*", help="Filter by tags")
-    search_parser.set_defaults(func=cmd_search)
-    
-    # Info command
-    info_parser = subparsers.add_parser("info", help="Show store information")
-    info_parser.add_argument("-s", "--store", default="capsules", help="Store name")
-    info_parser.set_defaults(func=cmd_info)
-    
-    # List models command
-    list_parser = subparsers.add_parser("list-models", help="List available local models")
-    list_parser.set_defaults(func=cmd_list_models)
-    
-    # Serve command
-    serve_parser = subparsers.add_parser("serve", help="Start web server")
-    serve_parser.add_argument("-s", "--store", help="Store to load")
-    serve_parser.add_argument("-p", "--port", type=int, default=8000, help="Port number")
-    serve_parser.add_argument("--auto-model", action="store_true",
-                              help="Use best available local model")
-    serve_parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"],
-                              help="Device to use")
-    serve_parser.set_defaults(func=cmd_serve)
-    
-    # Convert command
-    conv_parser = subparsers.add_parser("convert", help="Convert HF model to .capsulegraph")
-    conv_parser.add_argument("model_path", help="Path or name of HF model")
-    conv_parser.add_argument("output", help="Output .capsulegraph file")
-    conv_parser.add_argument("--bits", type=int, default=8, choices=[8,16], help="Quantisation bits (8=int8,16=fp16)")
-    conv_parser.add_argument("--device", default="cpu", choices=["cpu","cuda","mps"], help="Device for conversion")
-    conv_parser.set_defaults(func=lambda a: _cmd_convert(a))
-    
-    # Run capsulegraph command
-    run_parser = subparsers.add_parser("run-cg", help="Run a .capsulegraph archive and generate text")
-    run_parser.add_argument("archive", help="Path to .capsulegraph")
-    run_parser.add_argument("--prompt", default="Hello", help="Input prompt")
-    run_parser.add_argument("--device", default="cpu", choices=["cpu","cuda","mps"], help="Device")
-    run_parser.add_argument("--max-tokens", type=int, default=128, help="Max new tokens")
-    run_parser.set_defaults(func=lambda a: _cmd_run_cg(a))
-    
-    # DSL command
-    dsl_parser = subparsers.add_parser("dsl", help="Run DSL commands")
-    dsl_parser.add_argument("command", choices=["intent", "retrieve", "merge", "inject", "expand"])
-    dsl_parser.add_argument("text", help="Input text")
-    dsl_parser.add_argument("-s", "--store", required=True, help="Store name")
-    dsl_parser.add_argument("-k", "--top-k", type=int, default=5, help="Number of results")
-    dsl_parser.set_defaults(func=cmd_dsl)
+    ingest_p = subparsers.add_parser("ingest", help="ingest documents into a new store")
+    ingest_p.add_argument("input", help="input file or directory")
+    ingest_p.add_argument("output", help="output store path")
+    ingest_p.add_argument("--model", default="sentence-transformers/all-MiniLM-L6-v2", 
+                         help="HuggingFace model name")
+    ingest_p = subparsers.add_parser("ingest")
+    ingest_p.add_argument("json_file")
+    ingest_p.add_argument("index_path")
+    ingest_p.add_argument("--model", default="sentence-transformers/all-MiniLM-L6-v2")
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+    ingest_p.add_argument("--factory", default="Flat", help="FAISS index factory")
+
+    update_p = subparsers.add_parser("update", help="append capsules to an existing index")
+    update_p.add_argument("json_file")
+    update_p.add_argument("index_path")
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+    ingest_p.add_argument("--factory", default="Flat", help="FAISS index factory")
+main
+main
+
+    search_p = subparsers.add_parser("search")
+    search_p.add_argument("index_path")
+    search_p.add_argument("query")
+    search_p.add_argument("--top_k", type=int, default=5)
+    search_p.add_argument("--tags")
+
+    inject_p = subparsers.add_parser("inject")
+    inject_p.add_argument("index_path")
+    inject_p.add_argument("query")
+    inject_p.add_argument("--top_k", type=int, default=5)
+    inject_p.add_argument("--tags")
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+    inject_p.add_argument("--temperature", type=float, default=1.0)
+=======
+ main
+
+    compress_p = subparsers.add_parser("compress", help="summarize retrieved capsules")
+    compress_p.add_argument("index_path")
+    compress_p.add_argument("query")
+    compress_p.add_argument("--top_k", type=int, default=5)
+    compress_p.add_argument("--model", default="sshleifer/distilbart-cnn-12-6")
+    compress_p.add_argument("--tags")
+
+    walk_p = subparsers.add_parser("walk")
+    walk_p.add_argument("index_path")
+    walk_p.add_argument("query")
+    walk_p.add_argument("--top_k", type=int, default=5)
+    walk_p.add_argument("--depth", type=int, default=1)
+    walk_p.add_argument("--limit", type=int, default=10)
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+    walk_p.add_argument("--algo", choices=["bfs", "random"], default="bfs")
+    walk_p.add_argument("--restart", type=float, default=0.5, help="restart prob for random walk")
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+    walk_p.add_argument("--algo", choices=["bfs", "random"], default="bfs")
+    walk_p.add_argument("--restart", type=float, default=0.5, help="restart prob for random walk")
+main
+main
+    walk_p.add_argument("--tags")
+
+    cap_p = subparsers.add_parser("capsule")
+    cap_p.add_argument("index_path")
+    cap_p.add_argument("id", type=int)
+
+    list_p = subparsers.add_parser("list", help="list capsules")
+    list_p.add_argument("index_path")
+    list_p.add_argument("--limit", type=int, default=20)
+    list_p.add_argument("--tags")
+
+    prune_p = subparsers.add_parser("prune", help="remove capsules")
+    prune_p.add_argument("index_path")
+    prune_p.add_argument("--ids")
+    prune_p.add_argument("--tags")
+
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+xvy4pj-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+    reindex_p = subparsers.add_parser("reindex", help="rebuild embeddings")
+    reindex_p.add_argument("index_path")
+    reindex_p.add_argument("--model")
+    reindex_p.add_argument("--factory")
+
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+=======
+main
+main
+    info_p = subparsers.add_parser("info", help="show index summary")
+    info_p.add_argument("index_path")
+
+    shell_p = subparsers.add_parser("shell")
+    shell_p.add_argument("index_path")
+    shell_p.add_argument("--top_k", type=int, default=5)
+    shell_p.add_argument("--tags")
+3szrfh-codex/разработать-sigla-для-моделирования-мышления
+    shell_p.add_argument("--temperature", type=float, default=1.0)
+=======
+main
+
+    stats_p = subparsers.add_parser("stats", help="summarize a log file")
+    stats_p.add_argument("log_file")
 
     args = parser.parse_args()
     
     if not args.command:
         parser.print_help()
-        return
-    
-    try:
-        args.func(args)
-    except MissingDependencyError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        print("\nInterrupted")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-
-
-# -----------------------------------------------------------------------
-# helper for convert
-# -----------------------------------------------------------------------
-
-
-def _cmd_convert(args):  # noqa: D401
-    from .converter import convert_to_capsulegraph
-
-    convert_to_capsulegraph(
-        model_path=args.model_path,
-        output_path=args.output,
-        quant_bits=args.bits,
-        device=args.device,
-    )
-
-
-def _cmd_run_cg(args):  # noqa: D401
-    """Run generation from capsulegraph via runner."""
-    from .runner import load_capsulegraph
-    import torch
-
-    model, tok, _ = load_capsulegraph(args.archive, device=args.device)
-
-    input_ids = tok(args.prompt, return_tensors="pt").to(args.device)
-    with torch.no_grad():
-        output = model.generate(
-            **input_ids,
-            max_new_tokens=args.max_tokens,
-            do_sample=True,
-            temperature=0.9,
-        )
-    text = tok.decode(output[0], skip_special_tokens=True)
-    print(text)
 
 
 if __name__ == "__main__":

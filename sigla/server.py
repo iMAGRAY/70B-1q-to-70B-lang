@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Depends
 except Exception:  # pragma: no cover - optional dependency
     FastAPI = None
     class HTTPException(Exception):
         def __init__(self, *args, **kwargs):  # noqa: D401,E501
             super().__init__(*args)
+    def Depends(*args, **kwargs):
+        return lambda: True
 
 from typing import List, Optional
 import argparse
@@ -20,6 +22,14 @@ from .core import (
     MissingDependencyError,
 )
 from .graph import expand_with_links, random_walk_links
+
+# ---------------------------------------------------------------------------
+# Auth helper
+# ---------------------------------------------------------------------------
+
+def _require_api_key():
+    """Простая заглушка для аутентификации."""
+    return True
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -43,8 +53,8 @@ if app:
             raise RuntimeError("Index path not set")
         local_store = CapsuleStore()
         if os.path.exists(index_path + ".index"):
-            s.load(index_path)
-        store = s
+            local_store.load(index_path)
+        store = local_store
 
     @app.get("/search")
     def search(query: str, top_k: int = 5, tags: str | None = None):
@@ -64,11 +74,7 @@ if app:
         return results
 
     @app.get("/ask")
-3szrfh-codex/разработать-sigla-для-моделирования-мышления
     def ask(query: str, top_k: int = 5, tags: str | None = None, temperature: float = 1.0):
-=======
-    def ask(query: str, top_k: int = 5, tags: str | None = None):
-main
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
         tag_list = tags.split(",") if tags else None
