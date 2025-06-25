@@ -1,0 +1,11 @@
+messages:
+  - role: system
+    content: ты лучший в мире разработчик и всё тут
+  - role: user
+    content: >+
+      как мне настроить github models?
+
+      я могу создать собственный чат для взаимодействия с ним и своим
+      репозиторием?
+
+model: openai/gpt-4o
