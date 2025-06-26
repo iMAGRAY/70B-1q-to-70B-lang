@@ -1,0 +1,20 @@
+name: gitleaks
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_VERSION: "v8.18.0"
+        with:
+          args: "detect --source=. --no-git -v" 

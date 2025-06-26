@@ -4,24 +4,119 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ['3.9', '3.10']
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+          go-version: '1.22'
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Cache dependencies (Cargo, Go, npm)
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/go/pkg/mod
+            ~/.npm
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/Cargo.lock', '**/go.sum', '**/package-lock.json') }}
+
+      - name: Install Taskfile binary
         run: |
-          python -m pip install --upgrade pip
-          pip install .[core]
-          pip install pytest
-      - name: Run tests
-        run: pytest -q 
+          go install github.com/go-task/task/v3/cmd/task@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Run setup
+        run: task setup
+
+      - name: Smoke tests
+        run: |
+          bash scripts/smoke_go.sh
+          bash scripts/smoke_ts.sh
+      - name: Run CI (lint + tests)
+        run: task ci
+
+      - name: Run buf lint/breaking
+        run: |
+          buf lint
+          buf breaking --against '.git#branch=main'
+
+      - name: Install Lefthook
+        run: |
+          go install github.com/evilmartians/lefthook@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Run Lefthook pre-commit (lint gate)
+        run: |
+          lefthook install --skip --force
+          lefthook run pre-commit
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Cache deps (Cargo, Go, npm)
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/go/pkg/mod
+            ~/.npm
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/Cargo.lock', '**/go.sum', '**/package-lock.json') }}
+
+      - name: Install Taskfile binary
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Install Lefthook
+        run: |
+          go install github.com/evilmartians/lefthook@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Run Lefthook pre-commit (lint gate)
+        run: |
+          lefthook install --skip --force
+          lefthook run pre-commit 
