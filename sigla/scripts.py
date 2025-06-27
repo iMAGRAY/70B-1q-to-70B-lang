@@ -5,7 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import time
 import subprocess
 from itertools import islice
@@ -17,7 +17,6 @@ from .core import (
     MissingDependencyError,
     compress_capsules,
 )
-from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
 from .abtest import run_ab_test
 
 # logging helper
@@ -39,41 +38,9 @@ def cmd_ingest(args) -> None:
     else:
         store = CapsuleStore(model_name=args.model, device=args.device)
     
-    # Read input files
-    capsules = []
-    if os.path.isfile(args.input):
-        # Single file
-        if args.input.endswith('.json'):
-            with open(args.input, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    capsules = data
-                else:
-                    capsules = [{"text": json.dumps(data)}]
-        else:
-            with open(args.input, 'r', encoding='utf-8') as f:
-                content = f.read()
-                capsules = [{"text": content, "source": args.input}]
-    elif os.path.isdir(args.input):
-        # Directory
-        for file_path in Path(args.input).rglob("*"):
-            if file_path.is_file() and file_path.suffix in ['.txt', '.md', '.json']:
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        capsules.append({
-                            "text": content,
-                            "source": str(file_path),
-                            "tags": [file_path.suffix[1:]]  # Add file extension as tag
-                        })
-                except Exception as e:
-                    print(f"Warning: Failed to read {file_path}: {e}")
-    else:
-        print(f"Error: Input path not found: {args.input}")
-        sys.exit(1)
-    
+    capsules = _read_capsules(args.input)
     if not capsules:
-        print("No content found to ingest")
+        print(f"Error: Input path not found or no readable files: {args.input}")
         sys.exit(1)
     
     # --------------------------- streaming ingest in batches for efficiency
@@ -151,7 +118,7 @@ def cmd_info(args) -> None:
     print(f"  Device: {info.get('device', 'unknown')}")
     
     if info['tags']:
-        print(f"  Tags:")
+        print("  Tags:")
         for tag, count in sorted(info['tags'].items()):
             print(f"    {tag}: {count}")
 
@@ -177,45 +144,56 @@ def cmd_list_models(args) -> None:
 
 
 def cmd_serve(args) -> None:
-    """Start the web server."""
+    """Запустить полноценный сервер FastAPI."""
     try:
         import uvicorn
-        from fastapi import FastAPI
+        from . import server as sigserver
     except ImportError:
         print("Error: fastapi and uvicorn are required for the server")
         print("Install with: pip install fastapi uvicorn")
         sys.exit(1)
-    
+
     # Load or create store
     if args.store and os.path.exists(f"{args.store}.json"):
         print(f"Loading store from {args.store}")
-        store = CapsuleStore()
-        store.load(args.store)
+        sigserver.store = CapsuleStore(model_name="dummy")
+        sigserver.store.load(args.store)
     else:
         print("Creating new store")
-        if args.auto_model:
-            store = create_store_with_best_local_model(device=args.device)
-        else:
-            store = CapsuleStore(device=args.device)
-    
-    # Create simple FastAPI app
-    app = FastAPI(title="SIGLA API", description="Semantic Information Graph API")
-    
-    @app.get("/")
-    def root():
-        return {"message": "SIGLA API is running", "store_info": store.get_info()}
-    
-    @app.post("/search")
-    def search_endpoint(query: str, top_k: int = 5):
-        return store.query(query, top_k=top_k)
-    
+        sigserver.store = (
+            create_store_with_best_local_model(device=args.device)
+            if args.auto_model
+            else CapsuleStore(model_name="dummy", device=args.device)
+        )
+
+    sigserver.index_path = args.store or "sigla"
+    app = sigserver.create_server()
+
     print(f"Starting server on http://localhost:{args.port}")
     uvicorn.run(app, host="0.0.0.0", port=args.port)
 
 
+def cmd_demo(args) -> None:
+    """Запустить демонстрационный сервер с примерными капсулами."""
+    store_name = args.store
+    sample = Path(__file__).resolve().parent.parent / "sample_capsules.json"
+    if not Path(f"{store_name}.json").is_file():
+        print(f"Создаётся демо-индекс {store_name}")
+        with open(sample, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        demo_store = CapsuleStore(model_name="dummy", auto_link_k=2)
+        demo_store.add_capsules(data)
+        demo_store.save(store_name)
+
+    demo_args = argparse.Namespace(
+        store=store_name, port=args.port, auto_model=False, device="auto"
+    )
+    cmd_serve(demo_args)
+
+
 def cmd_dsl(args) -> None:
     """Execute DSL commands."""
-    from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND, ANALYZE
+    from .dsl import INTENT, RETRIEVE, MERGE, INJECT, EXPAND
     
     # Load store
     store = CapsuleStore()
@@ -550,6 +528,12 @@ def main() -> None:  # noqa: D401
     serve_parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
     serve_parser.set_defaults(func=cmd_serve)
 
+    # -------------------------------------------------------------- demo
+    demo_parser = subparsers.add_parser("demo", help="Run demo server with sample capsules")
+    demo_parser.add_argument("--store", "-s", default="demo_store")
+    demo_parser.add_argument("--port", "-p", type=int, default=8000)
+    demo_parser.set_defaults(func=cmd_demo)
+
     # -------------------------------------------------------------- convert cg
     conv_parser = subparsers.add_parser("convert", help="Convert HF model → .capsulegraph")
     conv_parser.add_argument("model_path")
@@ -595,8 +579,8 @@ def main() -> None:  # noqa: D401
     module_remove = module_sub.add_parser("remove", help="Remove module from registry")
     module_remove.add_argument("name")
     
-    module_list = module_sub.add_parser("list", help="List modules")
-    
+    module_sub.add_parser("list", help="List modules")
+
     module_parser.set_defaults(func=cmd_module)
 
     # ----------------------------------------------------------------- list

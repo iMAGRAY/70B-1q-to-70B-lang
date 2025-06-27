@@ -105,4 +105,4 @@ class SQLiteMetaStore(MetaStore):
         try:
             self.conn.close()
         except Exception:
-            pass 
+            pass

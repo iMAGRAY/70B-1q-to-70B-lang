@@ -28,10 +28,6 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "numpy>=1.21.0",
-        "faiss-cpu>=1.7.0",
-        "sentence-transformers>=2.2.0",
-        "torch>=1.9.0",
-        "transformers>=4.20.0",
     ],
     extras_require={
         "core": [

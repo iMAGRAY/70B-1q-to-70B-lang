@@ -9,7 +9,6 @@ $ python -m sigla.runner mymodel.capsulegraph --prompt "Hello" --device cuda
 
 import argparse
 import json
-import os
 import tarfile
 import tempfile
 from pathlib import Path
@@ -188,4 +187,4 @@ def _cli():  # noqa: D401
 
 
 if __name__ == "__main__":
-    _cli() 
+    _cli()

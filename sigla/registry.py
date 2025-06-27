@@ -18,7 +18,7 @@ import json
 import os
 import sqlite3
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -161,4 +161,4 @@ class ModuleRegistry:
         return self._backend.remove(name)
 
     def list_modules(self) -> List[RegistryEntry]:
-        return self._backend.list() 
+        return self._backend.list()
