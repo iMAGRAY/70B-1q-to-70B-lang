@@ -1,4 +1,3 @@
-import os
 import tempfile
 import tarfile
 import json

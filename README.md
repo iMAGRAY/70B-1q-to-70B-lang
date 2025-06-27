@@ -17,6 +17,10 @@ A lightweight FAISS-backed capsule database with local model support for semanti
 ### Installation
 
 ```bash
+# Minimal setup
+pip install numpy
+
+# Full features (FAISS, server, LLM support)
 pip install -r requirements.txt
 ```
 
@@ -55,7 +59,7 @@ python -m sigla search "your query" -s my_store -k 5
 # Get store information
 python -m sigla info -s my_store
 
-# Start web server
+# Start web server (UI on /ui)
 python -m sigla serve -s my_store -p 8000
 ```
 
@@ -150,15 +154,31 @@ python -m sigla serve -s my_store -p 8000
 API endpoints:
 
 - `GET /`: Server info and store statistics
-- `POST /search`: Search capsules with JSON body `{"query": "text", "top_k": 5}`
+- `GET /search`: Search capsules via `query` and optional `top_k` parameters
 
 Example:
 
 ```bash
-curl -X POST "http://localhost:8000/search" \
-     -H "Content-Type: application/json" \
-     -d '{"query": "machine learning", "top_k": 3}'
+curl "http://localhost:8000/search?query=machine%20learning&top_k=3"
 ```
+### Liquid Glass UI
+Для быстрой проверки интерфейса запустите `python -m sigla demo` или скрипт
+`./demo.sh`. Команда создаст демонстрационный индекс из
+`sample_capsules.json` c "dummy"‑моделью и поднимет сервер на
+`http://localhost:8000`. Затем откройте `http://localhost:8000/ui` в браузере.
+
+Если требуется вручную:
+1. Установите зависимости сервера: `pip install fastapi uvicorn`
+2. Запустите сервер: `python -m sigla serve -s my_store -p 8000`
+   (интерфейс будет доступен на `/ui`)
+3. Откройте `http://localhost:8000/ui` в браузере.
+
+### C++ Glass Shader Demo
+В каталоге `cpp_glass_demo` находится пример анимированного шейдера.
+1. Соберите его с помощью Emscripten (`./build.sh`).
+2. Для запуска используйте `./run.sh`, который откроет простой сервер на порту 8080.
+3. Откройте `http://localhost:8080/glass.html` в браузере.
+
 
 ## Advanced Features
 
@@ -215,12 +235,14 @@ my_store.json     # Metadata and configuration
 
 ## Dependencies
 
-### Core (required)
+### Core
 - `numpy>=1.21.0`
-- `faiss-cpu>=1.7.0` 
-- `sentence-transformers>=2.2.0`
 
-### Local Models (recommended)
+### Vector Search (optional)
+- `faiss-cpu>=1.7.0`  – faster similarity search
+
+### Local Models / Embeddings (optional)
+- `sentence-transformers>=2.2.0`
 - `torch>=1.9.0`
 - `transformers>=4.20.0`
 

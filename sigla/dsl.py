@@ -8,7 +8,7 @@ try:
 except ImportError:
     faiss = None
 
-from .core import CapsuleStore, merge_capsules, MissingDependencyError
+from .core import CapsuleStore, merge_capsules
 from .graph import expand_with_links
 
 
@@ -67,18 +67,15 @@ def MERGE(capsules: List[Dict[str, Any]], temperature: float = 1.0) -> str:
 def INJECT(text: str, store: Optional[CapsuleStore] = None, tags: Optional[List[str]] = None) -> str:
     """Inject new knowledge into the store and return enhanced text."""
     if store is not None:
-        # Create a properly structured capsule
+        # Создаём капсулу с метаданными и добавляем её в хранилище
         capsule = {
             "text": text,
             "tags": tags or ["injected", "dsl"],
             "source": "DSL_INJECT",
-            "timestamp": __import__('time').time()
+            "timestamp": __import__("time").time(),
         }
-        
-        # Add to store
-        capsule_id = store.add_capsule(text, tags=tags or ["injected"])
-        
-        # Return enhanced text with metadata
+        store.add_capsules([capsule])
+        capsule_id = len(store.meta) - 1
         return f"[INJECTED AS CAPSULE {capsule_id}] {text}"
     
     # If no store is provided, simply return the text unchanged – the caller is

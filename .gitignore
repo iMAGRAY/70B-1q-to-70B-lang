@@ -124,3 +124,7 @@ dmypy.json
 # Test files
 test_index.index
 test_index.json
+demo_store.*
+cpp_glass_demo/glass.*
+compact_store.*
+registry.db

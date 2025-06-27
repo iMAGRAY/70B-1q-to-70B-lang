@@ -109,4 +109,4 @@ class InMemoryMetaStore(MetaStore):
     def _replace_all(self, new_data: List[Dict[str, Any]]):
         # replace in-place, preserving object identity where possible
         self._meta.clear()
-        self._meta.extend(new_data) 
+        self._meta.extend(new_data)

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 
 from .core import CapsuleStore, merge_capsules, MissingDependencyError
 

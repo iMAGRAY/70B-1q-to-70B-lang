@@ -42,8 +42,6 @@ class LocalLLM:
             result = self.llm(prompt, max_tokens=max_tokens, temperature=temperature)
             return result["choices"][0]["text"].strip()
         if self.backend == "hf":
-            import torch
-
             inputs = self.tokenizer(prompt, return_tensors="pt")
             outputs = self.model.generate(
                 **inputs,

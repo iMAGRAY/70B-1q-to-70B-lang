@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from typing import List, Optional, Any
+from typing import List, Any
 import asyncio
 
 # ---------------------------------------------------------------------------
@@ -13,6 +13,7 @@ import asyncio
 try:
     from fastapi import FastAPI, HTTPException, Depends, Header, Response
     from contextlib import asynccontextmanager
+    from fastapi.staticfiles import StaticFiles
     FASTAPI_AVAILABLE = True
 except ImportError:  # pragma: no cover – FastAPI not installed
     FASTAPI_AVAILABLE = False
@@ -77,11 +78,8 @@ API_KEY_ENV = "SIGLA_API_KEY"
 # auto-reindex settings
 REINDEX_THRESHOLD = 500  # capsules added
 _added_since_reindex = 0
-<<<<<<< HEAD
 _ingest_total = 0
 _ingest_done = 0
-=======
->>>>>>> da64b8d172388d5ccd7110d9da3bbc8cbf63e912
 _event_subscribers: list[Any] = []
 
 
@@ -111,7 +109,7 @@ def create_server():
         global store
         if not index_path:
             raise RuntimeError("Index path not set")
-        local_store = CapsuleStore()
+        local_store = CapsuleStore(model_name="dummy")
         if os.path.exists(index_path + ".index"):
             local_store.load(index_path)
             store = local_store
@@ -122,6 +120,9 @@ def create_server():
     # Create app
     app = FastAPI(title="SIGLA Server", lifespan=lifespan)
 
+    ui_dir = os.path.join(os.path.dirname(__file__), "..", "ui")
+    if os.path.exists(ui_dir):
+        app.mount("/ui", StaticFiles(directory=ui_dir, html=True), name="ui")
     # Metrics helpers
     def _track(name):
         def decorator(func):
@@ -228,7 +229,6 @@ def create_server():
     ):
         if store is None:
             raise HTTPException(status_code=500, detail="Store not loaded")
-<<<<<<< HEAD
         global _added_since_reindex, _ingest_total, _ingest_done
 
         # If client sends total count once – reset counters
@@ -246,14 +246,6 @@ def create_server():
             pct = int(100 * _ingest_done / _ingest_total)
             payload.update({"progress": pct})
         _broadcast(payload)
-
-=======
-        global _added_since_reindex
-        store.add_capsules(capsules)
-        _added_since_reindex += len(capsules)
-        # notify stream listeners
-        _broadcast({"event": "update", "added": len(capsules)})
->>>>>>> da64b8d172388d5ccd7110d9da3bbc8cbf63e912
         if index_path:
             store.save(index_path)
         # auto reindex if threshold exceeded
@@ -269,11 +261,7 @@ def create_server():
             _added_since_reindex = 0
         siglog.log({"type": "update", "added": len(capsules)})
         CAPSULE_TOTAL.set(len(store.meta))
-<<<<<<< HEAD
         return {"added": len(capsules), "progress": payload.get("progress")}
-=======
-        return {"added": len(capsules)}
->>>>>>> da64b8d172388d5ccd7110d9da3bbc8cbf63e912
 
     @app.get("/info")
     def info():

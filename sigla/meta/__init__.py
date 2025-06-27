@@ -5,4 +5,4 @@ __all__ = [
     "MetaStore",
     "InMemoryMetaStore",
     "SQLiteMetaStore",
-] 
+]

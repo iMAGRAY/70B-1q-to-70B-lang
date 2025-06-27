@@ -21,7 +21,7 @@ from typing import List, Dict, Any, Optional, Union
 try:
     import faiss  # type: ignore
 except ImportError:
-    faiss = None
+    from . import faiss_stub as faiss  # fallback minimal implementation
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -139,6 +139,27 @@ class TransformersEmbeddings:
         return self.model.config.hidden_size
 
 
+class DummyEmbeddings:
+    """Extremely simple embedding model for tests."""
+
+    def __init__(self, dim: int = 8):
+        self._dim = dim
+
+    def encode(self, texts: List[str], batch_size: int = 16, convert_to_numpy: bool = True):
+        import numpy as _np
+        import hashlib
+        vecs = []
+        for t in texts:
+            h = int(hashlib.sha1(t.encode("utf-8")).hexdigest(), 16) % (2 ** 32)
+            rng = _np.random.default_rng(h)
+            vec = rng.random(self._dim, dtype="float32")
+            vecs.append(vec)
+        return _np.vstack(vecs)
+
+    def get_sentence_embedding_dimension(self) -> int:
+        return self._dim
+
+
 class GGUFEmbeddings:  # noqa: D101 – simple thin wrapper
     """Sentence embedding wrapper for *gguf* models via **llama-cpp-python**.
 
@@ -159,7 +180,6 @@ class GGUFEmbeddings:  # noqa: D101 – simple thin wrapper
 
         # Warm-up call to discover the embedding dimension
         dummy = self.llama.embed("hello world")
-        import numpy as _np  # local
         self._dim = len(dummy) if dummy else 0
 
     # ------------------------------------------------------------------ API
@@ -212,8 +232,6 @@ class CapsuleStore:
             auto_link_k: Number of similar capsules to auto-link (0 to disable)
             device: Device to use for embeddings ("auto", "cpu", "cuda", etc.)
         """
-        if faiss is None:
-            raise MissingDependencyError("faiss package is required")
 
         self.device = device
         self.model_name = model_name
@@ -226,7 +244,10 @@ class CapsuleStore:
         self._emb_cache: Dict[str, "np.ndarray"] = {}
 
         # Initialize model based on type
-        if model_name.startswith("local:"):
+        if model_name == "dummy":
+            self.model = DummyEmbeddings()
+            self.dimension = self.model.get_sentence_embedding_dimension()
+        elif model_name.startswith("local:"):
             local_path = model_name[6:]
             if local_path.endswith(".gguf") or local_path.endswith(".ggml"):
                 self.model = GGUFEmbeddings(local_path)
@@ -319,26 +340,31 @@ class CapsuleStore:
 
         # Auto-link if enabled
         if self.auto_link_k > 0 and len(self.meta) > 1:
-            self._update_auto_links(start_id, len(capsules))
+            self._update_auto_links(start_id, len(capsules), vectors)
 
-    def _update_auto_links(self, start_idx: int, count: int) -> None:
-        """Update auto-links for new capsules."""
-        # Get vectors for new capsules
+    def _update_auto_links(
+        self, start_idx: int, count: int, vectors: "np.ndarray | None" = None
+    ) -> None:
+        """Update auto-links for newly added capsules."""
+        import numpy as np  # local
+
         new_texts = [self.meta[i]["text"] for i in range(start_idx, start_idx + count)]
-        new_vectors = self.model.encode(new_texts, convert_to_numpy=True)
-        missing_texts = [t for t in new_texts if t not in self._emb_cache]
-        if missing_texts:
-            new_vecs = self.model.encode(missing_texts, convert_to_numpy=True)
-            for t, v in zip(missing_texts, new_vecs):
-                self._emb_cache[t] = v
-            _METRIC_CACHE_MISS.inc(len(missing_texts))
+        if vectors is None:
+            missing_texts = [t for t in new_texts if t not in self._emb_cache]
+            if missing_texts:
+                new_vecs = self.model.encode(missing_texts, convert_to_numpy=True)
+                for t, v in zip(missing_texts, new_vecs):
+                    self._emb_cache[t] = v
+                _METRIC_CACHE_MISS.inc(len(missing_texts))
             _METRIC_CACHE_HIT.inc(len(new_texts) - len(missing_texts))
-
-        new_vectors = np.vstack([self._emb_cache[t] for t in new_texts])
-        faiss.normalize_L2(new_vectors)
+            vectors = np.vstack([self._emb_cache[t] for t in new_texts])
+            faiss.normalize_L2(vectors)
+        else:
+            for t, v in zip(new_texts, vectors):
+                self._emb_cache.setdefault(t, v)
 
         # For each new capsule, find similar existing capsules
-        for i, vec in enumerate(new_vectors):
+        for i, vec in enumerate(vectors):
             idx = start_idx + i
             scores, indices = self.index.search(vec.reshape(1, -1), self.auto_link_k + 1)
             # Add links (skip self-link)
@@ -408,6 +434,8 @@ class CapsuleStore:
                 self.model = GGUFEmbeddings(local_path)
             else:
                 self.model = TransformersEmbeddings(local_path, device=self.device)
+        elif self.model_name == "dummy":
+            self.model = DummyEmbeddings()
         else:
             if SentenceTransformer is None:
                 raise MissingDependencyError("sentence-transformers package is required")
@@ -471,9 +499,11 @@ class CapsuleStore:
         self.meta = new_meta
         return removed
 
-    def rebuild_index(self, model_name: str | None = None, index_factory: str | None = None) -> None:
+    def rebuild_index(
+        self, model_name: str | None = None, index_factory: str | None = None
+    ) -> None:
         """Recompute all embeddings and rebuild the FAISS index."""
-            
+
         if model_name and model_name != self.model_name:
             if model_name.startswith("local:"):
                 local_path = model_name[6:]
@@ -483,22 +513,20 @@ class CapsuleStore:
                     self.model = TransformersEmbeddings(local_path, device=self.device)
                 self.model_name = model_name
                 self.dimension = self.model.get_sentence_embedding_dimension()
-            
-            if index_factory:
-                self.index_factory = index_factory
-            
-            texts = [m["text"] for m in self.meta]
-            vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
-            self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
-            if vectors is not None and len(texts) > 0:
-                faiss.normalize_L2(vectors)
-                if not self.index.is_trained:
-                    self.index.train(vectors)
-                self.index.add(vectors)
-        
-            for idx, meta in enumerate(self.meta):
-                meta["id"] = idx
-            # Finished rebuild_index
+        if index_factory:
+            self.index_factory = index_factory
+
+        texts = [m["text"] for m in self.meta]
+        vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
+        self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
+        if vectors is not None and len(texts) > 0:
+            faiss.normalize_L2(vectors)
+            if not self.index.is_trained:
+                self.index.train(vectors)
+            self.index.add(vectors)
+
+        for idx, meta in enumerate(self.meta):
+            meta["id"] = idx
 
     def add_capsule(self, text: str, tags: Optional[List[str]] | None = None) -> int:
         """Add a single *text* capsule and return its assigned ID."""
@@ -542,8 +570,6 @@ class CapsuleStore:
         """Construct a store that uses a *local* HF model directory."""
 
         instance = cls.__new__(cls)  # bypass __init__
-        if faiss is None:
-            raise MissingDependencyError("faiss package is required")
 
         instance.device = device
         instance.model_name = f"local:{model_path}"
@@ -564,7 +590,7 @@ class CapsuleStore:
 # ---------------------------------------------------------------------------
 
 
-def get_available_local_models(base_dir: str | Path | str = "./models") -> List[str]:
+def get_available_local_models(base_dir: str | Path = "./models") -> List[str]:
     """Return list of directories that *look like* HF model checkpoints."""
 
     base = Path(base_dir)

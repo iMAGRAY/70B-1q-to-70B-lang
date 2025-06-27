@@ -1,11 +1,14 @@
 # Core dependencies
 numpy>=1.21.0
-faiss-cpu>=1.7.0
-sentence-transformers>=2.2.0
 
-# Local model support
-torch>=1.9.0
-transformers>=4.20.0
+# FAISS is optional; install for faster vector search with
+# pip install sigla[faiss]
+# faiss-cpu>=1.7.0
+
+# Local model support (optional)
+# torch and transformers are required only when using online models
+# or local HF checkpoints. Install with 'pip install sigla[llm]' if needed.
+sentence-transformers>=2.2.0
 
 # Web server (optional)
 fastapi>=0.68.0
