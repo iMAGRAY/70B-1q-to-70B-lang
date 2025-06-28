@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
+from collections import OrderedDict
 
 try:
     import faiss  # type: ignore
@@ -113,7 +114,7 @@ class TransformersEmbeddings:
         """Encode a list of texts into embeddings."""
         all_embeddings = []
         for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
+            batch = texts[i:i + batch_size]
             encoded_input = self.tokenizer(
                 batch, padding=True, truncation=True, return_tensors="pt"
             ).to(self.device)
@@ -240,8 +241,9 @@ class CapsuleStore:
         self.meta: List[Dict[str, Any]] = []
         # Simple in-memory cache: text → embedding (np.ndarray). Helps
         # when the same snippet ingested several times or queried for
-        # auto-links/queries.
-        self._emb_cache: Dict[str, "np.ndarray"] = {}
+        # auto-links/queries.  Keep a modest LRU to avoid unbounded growth.
+        self._cache_max_size = 1000
+        self._emb_cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
 
         # Initialize model based on type
         if model_name == "dummy":
@@ -278,6 +280,17 @@ class CapsuleStore:
                 except Exception:  # pragma: no cover – GPU may be busy or unsupported
                     self._gpu = False
 
+    # ------------------------------------------------------------------
+    # internal helpers
+    # ------------------------------------------------------------------
+
+    def _cache_put(self, text: str, vec: "np.ndarray") -> None:
+        """Insert *vec* for *text* into embedding cache with LRU discipline."""
+        self._emb_cache[text] = vec
+        self._emb_cache.move_to_end(text)
+        if len(self._emb_cache) > self._cache_max_size:
+            self._emb_cache.popitem(last=False)
+
     def add_capsules(
         self,
         capsules: List[Dict[str, Any]],
@@ -312,7 +325,7 @@ class CapsuleStore:
             if missing_texts:
                 new_vecs = self.model.encode(missing_texts, convert_to_numpy=True)
                 for t, v in zip(missing_texts, new_vecs):
-                    self._emb_cache[t] = v
+                    self._cache_put(t, v)
                 _METRIC_CACHE_MISS.inc(len(missing_texts))
             _METRIC_CACHE_HIT.inc(len(texts) - len(missing_texts))
 
@@ -354,14 +367,15 @@ class CapsuleStore:
             if missing_texts:
                 new_vecs = self.model.encode(missing_texts, convert_to_numpy=True)
                 for t, v in zip(missing_texts, new_vecs):
-                    self._emb_cache[t] = v
+                    self._cache_put(t, v)
                 _METRIC_CACHE_MISS.inc(len(missing_texts))
             _METRIC_CACHE_HIT.inc(len(new_texts) - len(missing_texts))
             vectors = np.vstack([self._emb_cache[t] for t in new_texts])
             faiss.normalize_L2(vectors)
         else:
             for t, v in zip(new_texts, vectors):
-                self._emb_cache.setdefault(t, v)
+                if t not in self._emb_cache:
+                    self._cache_put(t, v)
 
         # For each new capsule, find similar existing capsules
         for i, vec in enumerate(vectors):
@@ -425,7 +439,7 @@ class CapsuleStore:
             npz = _np.load(cache_file, allow_pickle=True)
             texts = list(npz["texts"])
             vecs = npz["vecs"]
-            self._emb_cache = {t: vecs[i] for i, t in enumerate(texts)}
+            self._emb_cache = OrderedDict((t, vecs[i]) for i, t in enumerate(texts))
 
         # Re-initialize the model
         if self.model_name.startswith("local:"):
@@ -448,7 +462,13 @@ class CapsuleStore:
         if not self.meta:
             return []
 
-        vector = self.model.encode([text], convert_to_numpy=True)
+        cached = self._emb_cache.get(text)
+        if cached is None:
+            vector = self.model.encode([text], convert_to_numpy=True)
+            self._cache_put(text, vector[0])
+        else:
+            vector = cached.reshape(1, -1)
+        
         faiss.normalize_L2(vector)
         # oversample to account for tag filtering
         scores, indices = self.index.search(vector, top_k * 5)
@@ -485,7 +505,7 @@ class CapsuleStore:
             new_meta.append(copy)
             texts.append(copy["text"])
         for meta in new_meta:
-            meta["links"] = [mapping[l] for l in meta.get("links", []) if l in mapping]
+            meta["links"] = [mapping[link_id] for link_id in meta.get("links", []) if link_id in mapping]
         vectors = self.model.encode(texts, convert_to_numpy=True) if texts else None
         self.index = faiss.index_factory(self.dimension, self.index_factory, faiss.METRIC_INNER_PRODUCT)
         if vectors is not None and len(texts) > 0:
